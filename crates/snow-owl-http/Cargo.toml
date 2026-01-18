@@ -11,8 +11,11 @@ snow-owl-core = { path = "../snow-owl-core" }
 snow-owl-db = { path = "../snow-owl-db" }
 tokio.workspace = true
 axum.workspace = true
+axum-server.workspace = true
 tower.workspace = true
 tower-http = { workspace = true, features = ["fs", "trace", "cors"] }
+rustls.workspace = true
+rustls-pemfile.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

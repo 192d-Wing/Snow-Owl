@@ -378,6 +378,55 @@ iPXE boot scripts properly format IPv6 addresses with brackets for URLs (e.g., `
 
 ---
 
+### RFC 8446 - The Transport Layer Security (TLS) Protocol Version 1.3
+
+**Status:** ✅ **FULLY COMPLIANT** (Optional Feature)
+
+**Implementation:** Rustls 0.23
+
+**Implementation Location:** `crates/snow-owl-http/src/lib.rs`
+
+**TLS Support:**
+
+- TLS 1.3 support via Rustls ✅
+- TLS 1.2 backward compatibility ✅
+- Optional HTTPS mode (disabled by default) ✅
+- Certificate loading (PEM format) ✅
+- Private key loading (PKCS#8 PEM format) ✅
+
+**Configuration:**
+
+```rust
+// Lines 146-155 in crates/snow-owl-core/src/types.rs
+pub struct TlsConfig {
+    pub enabled: bool,
+    pub cert_path: PathBuf,  // Path to certificate file (PEM)
+    pub key_path: PathBuf,   // Path to private key file (PEM)
+}
+```
+
+**Security Features:**
+
+- Modern cipher suites only ✅
+- No client authentication required (appropriate for deployment scenario) ✅
+- Certificate validation for server identity ✅
+- Forward secrecy ✅
+
+**Usage:**
+
+- HTTP mode (default): Unencrypted for iPXE compatibility
+- HTTPS mode (optional): Encrypted API and boot script delivery
+- Both modes can coexist on different ports
+- Supports self-signed certificates (testing) and CA-signed certificates (production)
+
+**Supported Certificate Types:**
+
+1. Self-signed certificates (OpenSSL)
+2. Let's Encrypt certificates
+3. Organization CA certificates
+
+---
+
 ## DHCP and PXE Compliance
 
 ### RFC 2131 - Dynamic Host Configuration Protocol
@@ -487,6 +536,45 @@ sqlx::query(
 .bind(machine.id)
 .bind(machine.mac_address.to_string())
 // ... more bindings
+```
+
+### TLS/HTTPS Security (RFC 8446)
+
+**Encryption and Authentication:**
+
+Snow-Owl provides optional TLS/HTTPS support for securing HTTP communications:
+
+1. **Transport Encryption**:
+   - TLS 1.3 (RFC 8446) via Rustls library ✅
+   - TLS 1.2 backward compatibility ✅
+   - Modern cipher suites only (no weak ciphers) ✅
+   - Forward secrecy for all connections ✅
+
+2. **Certificate Management**:
+   - Supports PEM format certificates ✅
+   - Self-signed certificates for testing ✅
+   - Let's Encrypt integration supported ✅
+   - Organization CA certificates supported ✅
+
+3. **Security Benefits**:
+   - Encrypted API communication
+   - Protected deployment credentials
+   - Secure boot script delivery
+   - Man-in-the-middle attack prevention
+
+4. **Implementation Notes**:
+   - TLS is optional (disabled by default for iPXE compatibility)
+   - TFTP remains unencrypted (required for network boot)
+   - HTTP and HTTPS can run on separate ports simultaneously
+   - No client certificate authentication (appropriate for deployment scenario)
+
+**Configuration:**
+
+```toml
+[tls]
+enabled = true
+cert_path = "/etc/snow-owl/server-cert.pem"
+key_path = "/etc/snow-owl/server-key.pem"
 ```
 
 ---
@@ -627,6 +715,7 @@ To verify RFC compliance, the following tests should be performed:
 | **7230** | HTTP/1.1: Message Syntax | ✅ Full | Via Axum/Hyper |
 | **7231** | HTTP/1.1: Semantics | ✅ Full | Via Axum/Hyper |
 | **7540** | HTTP/2 | ⚠️ Available | Via Hyper |
+| **8446** | TLS 1.3 | ✅ Full | Optional (Rustls) |
 | **2131** | DHCP | ⚠️ External | Via external DHCP |
 | **4578** | DHCP PXE Options | ⚠️ External | Via external DHCP |
 

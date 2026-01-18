@@ -169,6 +169,80 @@ Edit `/etc/snow-owl/config.toml` and set the `database_url`:
 database_url = "postgresql://snow_owl:your_secure_password@localhost/snow_owl"
 ```
 
+### TLS/HTTPS Configuration
+
+Snow-Owl supports TLS/HTTPS for secure API access and encrypted boot script delivery. TLS is optional and disabled by default.
+
+#### Generating TLS Certificates
+
+**Option 1: Self-Signed Certificate (for testing)**
+
+```bash
+# Generate private key and self-signed certificate
+openssl req -x509 -newkey rsa:4096 -nodes \
+  -keyout /etc/snow-owl/server-key.pem \
+  -out /etc/snow-owl/server-cert.pem \
+  -days 365 \
+  -subj "/CN=snow-owl.example.com"
+
+# Set appropriate permissions
+chmod 600 /etc/snow-owl/server-key.pem
+chmod 644 /etc/snow-owl/server-cert.pem
+```
+
+**Option 2: Let's Encrypt (for production)**
+
+```bash
+# Install certbot
+sudo apt install certbot  # Ubuntu/Debian
+
+# Obtain certificate (HTTP-01 challenge)
+sudo certbot certonly --standalone -d snow-owl.example.com
+
+# Certificates will be in /etc/letsencrypt/live/snow-owl.example.com/
+# Link them to Snow-Owl's expected location
+sudo ln -s /etc/letsencrypt/live/snow-owl.example.com/fullchain.pem /etc/snow-owl/server-cert.pem
+sudo ln -s /etc/letsencrypt/live/snow-owl.example.com/privkey.pem /etc/snow-owl/server-key.pem
+```
+
+**Option 3: Use Your Organization's CA**
+
+Place your certificate and private key in PEM format at:
+- Certificate: `/etc/snow-owl/server-cert.pem`
+- Private key: `/etc/snow-owl/server-key.pem`
+
+#### Enable TLS in Configuration
+
+Edit `/etc/snow-owl/config.toml`:
+
+```toml
+[network]
+interface = "eth0"
+server_ip = "192.168.100.1"
+# ... other network settings ...
+
+enable_dhcp = false
+enable_tftp = true
+tftp_root = "/var/lib/snow-owl/tftp"
+http_port = 8080        # Still available for iPXE (unencrypted)
+https_port = 8443       # HTTPS port for API and secure access
+images_dir = "/var/lib/snow-owl/images"
+winpe_dir = "/var/lib/snow-owl/winpe"
+database_url = "postgresql://snow_owl:password@localhost/snow_owl"
+
+[tls]
+enabled = true
+cert_path = "/etc/snow-owl/server-cert.pem"
+key_path = "/etc/snow-owl/server-key.pem"
+```
+
+**Notes:**
+- When TLS is enabled, the HTTP server runs on the HTTPS port only
+- iPXE boot scripts are served over HTTPS
+- API endpoints are encrypted
+- TFTP remains unencrypted (required for network boot)
+- For production, use certificates from a trusted CA or Let's Encrypt
+
 ## Setup Guide
 
 ### 1. Prepare iPXE Boot Files

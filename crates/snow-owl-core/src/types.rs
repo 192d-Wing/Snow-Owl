@@ -143,6 +143,17 @@ pub struct NetworkConfig {
     pub dns_servers: Vec<IpAddr>,
 }
 
+/// TLS configuration for HTTPS
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TlsConfig {
+    /// Enable TLS/HTTPS
+    pub enabled: bool,
+    /// Path to TLS certificate file (PEM format)
+    pub cert_path: PathBuf,
+    /// Path to TLS private key file (PEM format)
+    pub key_path: PathBuf,
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -151,6 +162,8 @@ pub struct ServerConfig {
     pub enable_tftp: bool,
     pub tftp_root: PathBuf,
     pub http_port: u16,
+    pub https_port: Option<u16>,
+    pub tls: Option<TlsConfig>,
     pub images_dir: PathBuf,
     pub winpe_dir: PathBuf,
     pub database_url: String,
@@ -173,6 +186,8 @@ impl Default for ServerConfig {
             enable_tftp: true,
             tftp_root: PathBuf::from("/var/lib/snow-owl/tftp"),
             http_port: 8080,
+            https_port: Some(8443),
+            tls: None, // TLS disabled by default
             images_dir: PathBuf::from("/var/lib/snow-owl/images"),
             winpe_dir: PathBuf::from("/var/lib/snow-owl/winpe"),
             database_url: "postgresql://snow_owl:password@localhost/snow_owl".to_string(),
