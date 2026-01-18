@@ -1,0 +1,21 @@
+[package]
+name = "snow-owl-http"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+snow-owl-core = { path = "../snow-owl-core" }
+snow-owl-db = { path = "../snow-owl-db" }
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http = { workspace = true, features = ["fs", "trace", "cors"] }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

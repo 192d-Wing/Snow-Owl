@@ -1,0 +1,22 @@
+rem diskpart-uefi.txt - Disk partitioning script for UEFI systems
+rem This script creates a GPT partition layout for UEFI boot
+
+select disk 0
+clean
+convert gpt
+
+rem Create EFI system partition (ESP)
+create partition efi size=100
+format quick fs=fat32 label="System"
+assign letter=S
+
+rem Create Microsoft Reserved partition (MSR)
+create partition msr size=16
+
+rem Create Windows partition
+create partition primary
+format quick fs=ntfs label="Windows"
+assign letter=C
+
+list volume
+exit

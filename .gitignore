@@ -1,0 +1,33 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+*.db
+*.db-shm
+*.db-wal
+
+# Deployment files
+/tftp/
+/images/
+/winpe/
+*.wim
+*.vhd
+*.vhdx
+*.iso
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
