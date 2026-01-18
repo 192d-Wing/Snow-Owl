@@ -160,6 +160,16 @@ pub struct TlsConfig {
     /// Path to TLS private key file (PEM format)
     /// NIST SC-12: Cryptographic Key Establishment and Management
     pub key_path: PathBuf,
+    /// Enable HTTP/2 via ALPN (Application-Layer Protocol Negotiation)
+    /// RFC 7540: HTTP/2 protocol support
+    /// NIST SC-8: Enhanced protocol efficiency while maintaining security
+    #[serde(default = "default_enable_http2")]
+    pub enable_http2: bool,
+}
+
+/// Default value for enable_http2 (true)
+fn default_enable_http2() -> bool {
+    true
 }
 
 /// Authentication configuration

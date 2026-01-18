@@ -14,6 +14,7 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 - 🔄 **Dynamic Boot Menus**: iPXE-based boot menus generated on-the-fly
 - 🔐 **Authentication & Authorization**: API key-based auth with role-based access control (RBAC)
 - 🔒 **TLS/HTTPS Support**: Optional encrypted communications (RFC 8446 compliant)
+- 🚄 **HTTP/2 Support**: Optional HTTP/2 via ALPN for improved API performance (RFC 7540 compliant)
 - 🌐 **IPv6 Support**: Full dual-stack IPv4/IPv6 networking (RFC 2460 compliant)
 - 🛡️ **Security**: Safe Rust code with NIST SP 800-53 security controls
 
@@ -237,6 +238,7 @@ database_url = "postgresql://snow_owl:password@localhost/snow_owl"
 enabled = true
 cert_path = "/etc/snow-owl/server-cert.pem"
 key_path = "/etc/snow-owl/server-key.pem"
+enable_http2 = true  # Enable HTTP/2 via ALPN (default: true)
 ```
 
 **Notes:**
@@ -245,6 +247,11 @@ key_path = "/etc/snow-owl/server-key.pem"
 - API endpoints are encrypted
 - TFTP remains unencrypted (required for network boot)
 - For production, use certificates from a trusted CA or Let's Encrypt
+- **HTTP/2 Support**: When `enable_http2 = true`, the server advertises HTTP/2 support via ALPN
+  - Clients can negotiate HTTP/2 or HTTP/1.1 during TLS handshake
+  - Provides better performance for API clients with multiplexing and header compression
+  - Automatically falls back to HTTP/1.1 for clients that don't support HTTP/2
+  - HTTP/2 only available with HTTPS (plain HTTP uses HTTP/1.1)
 
 ### Authentication and Authorization
 
@@ -792,6 +799,7 @@ Please report security vulnerabilities to the repository maintainers privately.
 
 - [x] Add authentication and authorization
 - [x] TLS/HTTPS support for encrypted API access
+- [x] HTTP/2 support for improved API performance
 - [x] IPv6 support for modern networks
 - [ ] Support for multicast deployment
 - [ ] Web UI for management

@@ -62,11 +62,14 @@ impl HttpServer {
         Ok(())
     }
 
-    /// Run HTTPS server with TLS encryption
+    /// Run HTTPS server with TLS encryption and optional HTTP/2 support
+    ///
+    /// RFC 7540: HTTP/2 protocol support via ALPN when enabled
+    /// RFC 8446: TLS 1.3 with automatic protocol negotiation
     ///
     /// NIST Controls:
     /// - SC-8: Transmission Confidentiality and Integrity
-    /// - SC-8(1): Cryptographic Protection (TLS 1.3/1.2)
+    /// - SC-8(1): Cryptographic Protection (TLS 1.3/1.2, HTTP/2)
     /// - SC-13: Cryptographic Protection (modern cipher suites only)
     /// - SC-23: Session Authenticity (TLS session management)
     /// - AU-3: Content of Audit Records (log certificate paths)
@@ -93,13 +96,16 @@ impl HttpServer {
         Ok(())
     }
 
-    /// Load TLS certificates and private keys
+    /// Load TLS certificates and private keys with HTTP/2 ALPN configuration
+    ///
+    /// RFC 7540: HTTP/2 support via ALPN (Application-Layer Protocol Negotiation)
     ///
     /// NIST Controls:
     /// - SC-12: Cryptographic Key Establishment and Management
     /// - SC-17: Public Key Infrastructure Certificates
     /// - IA-5(2): PKI-based Authentication
     /// - SI-10: Information Input Validation (certificate validation)
+    /// - SC-8: Transmission Confidentiality (protocol negotiation)
     fn load_tls_config(&self, tls_config: &snow_owl_core::TlsConfig) -> Result<RustlsServerConfig> {
         // NIST SC-17: Load certificate chain from PEM file
         // NIST SI-10: Validate certificate file exists and is readable
@@ -138,10 +144,25 @@ impl HttpServer {
         // NIST SC-13: Build TLS configuration with cryptographic protection
         // NIST SC-8(1): Enable modern cipher suites only (via Rustls defaults)
         // NIST IA-5(2): No client authentication required (server-only cert)
-        let config = RustlsServerConfig::builder()
+        let mut config = RustlsServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key.into())
             .map_err(|e| SnowOwlError::Http(format!("Failed to build TLS config: {}", e)))?;
+
+        // RFC 7540: Configure HTTP/2 via ALPN (Application-Layer Protocol Negotiation)
+        // NIST SC-8: Protocol negotiation for enhanced efficiency
+        if tls_config.enable_http2 {
+            config.alpn_protocols = vec![
+                b"h2".to_vec(),       // HTTP/2 (RFC 7540)
+                b"http/1.1".to_vec(), // HTTP/1.1 fallback (RFC 7230)
+            ];
+            info!("HTTP/2 enabled via ALPN");
+        } else {
+            config.alpn_protocols = vec![
+                b"http/1.1".to_vec(), // HTTP/1.1 only (RFC 7230)
+            ];
+            info!("HTTP/2 disabled, using HTTP/1.1 only");
+        }
 
         Ok(config)
     }

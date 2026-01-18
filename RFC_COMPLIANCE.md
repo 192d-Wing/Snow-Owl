@@ -380,15 +380,67 @@ iPXE boot scripts properly format IPv6 addresses with brackets for URLs (e.g., `
 
 ### RFC 7540 - HTTP/2
 
-**Status:** ⚠️ **SUPPORTED VIA FRAMEWORK**
+**Status:** ✅ **FULLY COMPLIANT** (Optional Feature)
 
-**Implementation:** Hyper supports HTTP/2
+**Implementation:** Rustls ALPN + Hyper/Axum
 
-**Current Status:**
+**Implementation Location:** `crates/snow-owl-http/src/lib.rs`
 
-- HTTP/2 support available through Hyper
-- Not explicitly configured or required
-- Can be enabled if needed for performance
+**HTTP/2 Support:**
+
+- HTTP/2 via ALPN (Application-Layer Protocol Negotiation) ✅
+- Automatic protocol negotiation with TLS ✅
+- HTTP/1.1 fallback support ✅
+- Configurable enable/disable option ✅
+- Enabled by default for HTTPS connections ✅
+
+**ALPN Configuration:**
+
+```rust
+// Lines 138-157 in crates/snow-owl-http/src/lib.rs
+if tls_config.enable_http2 {
+    config.alpn_protocols = vec![
+        b"h2".to_vec(),       // HTTP/2 (RFC 7540)
+        b"http/1.1".to_vec(), // HTTP/1.1 fallback (RFC 7230)
+    ];
+} else {
+    config.alpn_protocols = vec![
+        b"http/1.1".to_vec(), // HTTP/1.1 only
+    ];
+}
+```
+
+**Configuration:**
+
+```toml
+[tls]
+enabled = true
+cert_path = "/etc/snow-owl/server-cert.pem"
+key_path = "/etc/snow-owl/server-key.pem"
+enable_http2 = true  # Enable HTTP/2 via ALPN (default: true)
+```
+
+**Features:**
+
+1. **Protocol Negotiation**: Automatic HTTP/2 or HTTP/1.1 selection via ALPN
+2. **Multiplexing**: Multiple requests over single connection (HTTP/2)
+3. **Header Compression**: HPACK compression for reduced overhead
+4. **Server Push**: Supported by framework (not currently used)
+5. **Stream Prioritization**: Supported by framework
+
+**Usage:**
+
+- HTTP/2 only available with HTTPS/TLS connections
+- Plain HTTP connections use HTTP/1.1
+- Clients negotiate protocol during TLS handshake
+- Automatic fallback to HTTP/1.1 if client doesn't support HTTP/2
+
+**Benefits:**
+
+- Improved performance for API clients
+- Reduced latency for multiple requests
+- Better resource utilization
+- Backward compatible with HTTP/1.1 clients
 
 ---
 
@@ -755,7 +807,7 @@ fn convert_to_netascii(data: &[u8]) -> Vec<u8> {
 | **2460** | Internet Protocol, Version 6 | ✅ Full | 100% (dual-stack) |
 | **7230** | HTTP/1.1: Message Syntax | ✅ Full | Via Axum/Hyper |
 | **7231** | HTTP/1.1: Semantics | ✅ Full | Via Axum/Hyper |
-| **7540** | HTTP/2 | ⚠️ Available | Via Hyper |
+| **7540** | HTTP/2 | ✅ Full | Optional (ALPN/TLS) |
 | **8446** | TLS 1.3 | ✅ Full | Optional (Rustls) |
 | **2131** | DHCP | ⚠️ External | Via external DHCP |
 | **4578** | DHCP PXE Options | ⚠️ External | Via external DHCP |
@@ -827,6 +879,7 @@ Snow-Owl has been designed for interoperability with:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-18 | 1.3 | Added HTTP/2 support via ALPN for HTTPS connections (RFC 7540) |
 | 2026-01-18 | 1.2 | Implemented NETASCII mode with full line ending conversion (RFC 1350) |
 | 2026-01-18 | 1.1 | Added comprehensive authentication and authorization system |
 | 2026-01-18 | 1.0 | Initial RFC compliance documentation |
