@@ -33,17 +33,13 @@ pub async fn run(config_path: &Path) -> Result<()> {
     tokio::fs::create_dir_all(&config.images_dir).await?;
     tokio::fs::create_dir_all(&config.winpe_dir).await?;
 
-    if let Some(parent) = config.database_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
     // Initialize database
     let db = Arc::new(
-        Database::new(&config.database_path)
+        Database::new(&config.database_url)
             .await
             .context("Failed to initialize database")?,
     );
-    info!("Database initialized at {}", config.database_path.display());
+    info!("Database connection established: {}", config.database_url);
 
     // Start TFTP server if enabled
     let tftp_handle = if config.enable_tftp {

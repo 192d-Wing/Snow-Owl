@@ -8,7 +8,7 @@ use crate::{config, ImageCommands};
 
 pub async fn handle(config_path: &Path, command: ImageCommands) -> Result<()> {
     let config = config::load_config(config_path).await?;
-    let db = Database::new(&config.database_path).await?;
+    let db = Database::new(&config.database_url).await?;
 
     match command {
         ImageCommands::List => list(&db).await?,

@@ -145,7 +145,7 @@ pub struct ServerConfig {
     pub http_port: u16,
     pub images_dir: PathBuf,
     pub winpe_dir: PathBuf,
-    pub database_path: PathBuf,
+    pub database_url: String,
 }
 
 impl Default for ServerConfig {
@@ -166,7 +166,7 @@ impl Default for ServerConfig {
             http_port: 8080,
             images_dir: PathBuf::from("/var/lib/snow-owl/images"),
             winpe_dir: PathBuf::from("/var/lib/snow-owl/winpe"),
-            database_path: PathBuf::from("/var/lib/snow-owl/snow-owl.db"),
+            database_url: "postgresql://snow_owl:password@localhost/snow_owl".to_string(),
         }
     }
 }

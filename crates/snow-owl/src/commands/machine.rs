@@ -8,7 +8,7 @@ use crate::{config, MachineCommands};
 
 pub async fn handle(config_path: &Path, command: MachineCommands) -> Result<()> {
     let config = config::load_config(config_path).await?;
-    let db = Database::new(&config.database_path).await?;
+    let db = Database::new(&config.database_url).await?;
 
     match command {
         MachineCommands::List => list(&db).await?,

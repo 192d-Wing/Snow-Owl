@@ -10,7 +10,7 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 - 🔧 **Complete PXE Stack**: TFTP and HTTP servers for network booting
 - 🪟 **Windows Deployment**: Support for WIM, VHD, and VHDX image formats
 - 🌐 **REST API**: Full API for automation and integration
-- 📊 **Deployment Tracking**: SQLite database for tracking machines and deployments
+- 📊 **Deployment Tracking**: PostgreSQL database for tracking machines and deployments
 - 🔄 **Dynamic Boot Menus**: iPXE-based boot menus generated on-the-fly
 - 🛡️ **Security**: Safe Rust code with built-in protections against common vulnerabilities
 
@@ -23,7 +23,7 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
 │  │ TFTP Server  │  │ HTTP Server  │  │   Database   │     │
-│  │   (Port 69)  │  │  (Port 8080) │  │   (SQLite)   │     │
+│  │   (Port 69)  │  │  (Port 8080) │  │ (PostgreSQL) │     │
 │  └──────────────┘  └──────────────┘  └──────────────┘     │
 │         │                 │                   │             │
 │         │                 │                   │             │
@@ -102,7 +102,44 @@ tftp_root = "/var/lib/snow-owl/tftp"
 http_port = 8080
 images_dir = "/var/lib/snow-owl/images"
 winpe_dir = "/var/lib/snow-owl/winpe"
-database_path = "/var/lib/snow-owl/snow-owl.db"
+database_url = "postgresql://snow_owl:password@localhost/snow_owl"
+```
+
+### PostgreSQL Setup
+
+Snow-Owl requires PostgreSQL for storing deployment data.
+
+**Install PostgreSQL:**
+
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql postgresql-contrib
+
+# CentOS/RHEL
+sudo yum install postgresql-server postgresql-contrib
+sudo postgresql-setup initdb
+sudo systemctl start postgresql
+```
+
+**Create Database and User:**
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE snow_owl;
+CREATE USER snow_owl WITH PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE snow_owl TO snow_owl;
+\q
+```
+
+**Update Configuration:**
+
+Edit `/etc/snow-owl/config.toml` and set the `database_url`:
+
+```toml
+database_url = "postgresql://snow_owl:your_secure_password@localhost/snow_owl"
 ```
 
 ## Setup Guide
@@ -361,10 +398,9 @@ curl http://192.168.100.1:8080/boot/00:11:22:33:44:55
 │   │   └── boot.sdi        # Boot SDI
 │   └── sources/
 │       └── boot.wim        # WinPE image
-├── images/                  # Windows images
-│   ├── server2022.wim
-│   └── win10.vhdx
-└── snow-owl.db             # SQLite database
+└── images/                  # Windows images
+    ├── server2022.wim
+    └── win10.vhdx
 ```
 
 ## Troubleshooting
@@ -411,7 +447,7 @@ Snow-Owl/
 ├── crates/
 │   ├── snow-owl/          # Main CLI application
 │   ├── snow-owl-core/     # Core types and utilities
-│   ├── snow-owl-db/       # Database layer (SQLite)
+│   ├── snow-owl-db/       # Database layer (PostgreSQL)
 │   ├── snow-owl-tftp/     # TFTP server implementation
 │   └── snow-owl-http/     # HTTP server and REST API
 ├── scripts/
@@ -466,7 +502,7 @@ Please report security vulnerabilities to the repository maintainers privately.
 
 - Snow-Owl requires root privileges for TFTP (port 69)
 - TFTP has built-in path traversal protection
-- Database uses SQLite with parameterized queries
+- Database uses PostgreSQL with parameterized queries
 - No authentication is implemented - deploy on trusted networks only
 - Consider using VLANs to isolate deployment network
 

@@ -1,21 +1,16 @@
 use snow_owl_core::*;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use std::path::Path;
-use std::str::FromStr;
+use sqlx::postgres::{PgPool, PgPoolOptions};
 use uuid::Uuid;
 
 pub struct Database {
-    pool: SqlitePool,
+    pool: PgPool,
 }
 
 impl Database {
-    pub async fn new(database_path: &Path) -> Result<Self> {
-        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", database_path.display()))?
-            .create_if_missing(true);
-
-        let pool = SqlitePoolOptions::new()
+    pub async fn new(database_url: &str) -> Result<Self> {
+        let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect_with(options)
+            .connect(database_url)
             .await?;
 
         let db = Self { pool };
@@ -28,12 +23,12 @@ impl Database {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS machines (
-                id TEXT PRIMARY KEY,
-                mac_address TEXT NOT NULL UNIQUE,
+                id UUID PRIMARY KEY,
+                mac_address VARCHAR(17) NOT NULL UNIQUE,
                 hostname TEXT,
-                ip_address TEXT,
-                last_seen TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                ip_address INET,
+                last_seen TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
             )
             "#,
         )
@@ -43,13 +38,13 @@ impl Database {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS images (
-                id TEXT PRIMARY KEY,
+                id UUID PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 description TEXT,
                 image_type TEXT NOT NULL,
                 file_path TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
+                size_bytes BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
                 checksum TEXT
             )
             "#,
@@ -60,15 +55,13 @@ impl Database {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS deployments (
-                id TEXT PRIMARY KEY,
-                machine_id TEXT NOT NULL,
-                image_id TEXT NOT NULL,
+                id UUID PRIMARY KEY,
+                machine_id UUID NOT NULL REFERENCES machines(id),
+                image_id UUID NOT NULL REFERENCES images(id),
                 status TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                error_message TEXT,
-                FOREIGN KEY (machine_id) REFERENCES machines(id),
-                FOREIGN KEY (image_id) REFERENCES images(id)
+                started_at TIMESTAMPTZ NOT NULL,
+                completed_at TIMESTAMPTZ,
+                error_message TEXT
             )
             "#,
         )
@@ -83,19 +76,19 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO machines (id, mac_address, hostname, ip_address, last_seen, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT(mac_address) DO UPDATE SET
-                hostname = excluded.hostname,
-                ip_address = excluded.ip_address,
-                last_seen = excluded.last_seen
+                hostname = EXCLUDED.hostname,
+                ip_address = EXCLUDED.ip_address,
+                last_seen = EXCLUDED.last_seen
             "#,
         )
-        .bind(machine.id.to_string())
+        .bind(machine.id)
         .bind(machine.mac_address.to_string())
         .bind(&machine.hostname)
         .bind(machine.ip_address.map(|ip| ip.to_string()))
-        .bind(machine.last_seen.to_rfc3339())
-        .bind(machine.created_at.to_rfc3339())
+        .bind(machine.last_seen)
+        .bind(machine.created_at)
         .execute(&self.pool)
         .await?;
 
@@ -104,24 +97,24 @@ impl Database {
 
     pub async fn get_machine_by_mac(&self, mac: &MacAddress) -> Result<Option<Machine>> {
         let row = sqlx::query_as::<_, MachineRow>(
-            "SELECT * FROM machines WHERE mac_address = ?"
+            "SELECT * FROM machines WHERE mac_address = $1"
         )
         .bind(mac.to_string())
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| r.into()))
+        Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn get_machine_by_id(&self, id: Uuid) -> Result<Option<Machine>> {
         let row = sqlx::query_as::<_, MachineRow>(
-            "SELECT * FROM machines WHERE id = ?"
+            "SELECT * FROM machines WHERE id = $1"
         )
-        .bind(id.to_string())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| r.into()))
+        Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn list_machines(&self) -> Result<Vec<Machine>> {
@@ -131,7 +124,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|r| r.into()).collect())
+        Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
     }
 
     // Image operations
@@ -139,16 +132,16 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO images (id, name, description, image_type, file_path, size_bytes, created_at, checksum)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
-        .bind(image.id.to_string())
+        .bind(image.id)
         .bind(&image.name)
         .bind(&image.description)
         .bind(serde_json::to_string(&image.image_type).unwrap())
         .bind(image.file_path.to_string_lossy().to_string())
         .bind(image.size_bytes as i64)
-        .bind(image.created_at.to_rfc3339())
+        .bind(image.created_at)
         .bind(&image.checksum)
         .execute(&self.pool)
         .await?;
@@ -158,9 +151,9 @@ impl Database {
 
     pub async fn get_image_by_id(&self, id: Uuid) -> Result<Option<WindowsImage>> {
         let row = sqlx::query_as::<_, ImageRow>(
-            "SELECT * FROM images WHERE id = ?"
+            "SELECT * FROM images WHERE id = $1"
         )
-        .bind(id.to_string())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -169,7 +162,7 @@ impl Database {
 
     pub async fn get_image_by_name(&self, name: &str) -> Result<Option<WindowsImage>> {
         let row = sqlx::query_as::<_, ImageRow>(
-            "SELECT * FROM images WHERE name = ?"
+            "SELECT * FROM images WHERE name = $1"
         )
         .bind(name)
         .fetch_optional(&self.pool)
@@ -189,8 +182,8 @@ impl Database {
     }
 
     pub async fn delete_image(&self, id: Uuid) -> Result<()> {
-        sqlx::query("DELETE FROM images WHERE id = ?")
-            .bind(id.to_string())
+        sqlx::query("DELETE FROM images WHERE id = $1")
+            .bind(id)
             .execute(&self.pool)
             .await?;
 
@@ -202,15 +195,15 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO deployments (id, machine_id, image_id, status, started_at, completed_at, error_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
         )
-        .bind(deployment.id.to_string())
-        .bind(deployment.machine_id.to_string())
-        .bind(deployment.image_id.to_string())
+        .bind(deployment.id)
+        .bind(deployment.machine_id)
+        .bind(deployment.image_id)
         .bind(serde_json::to_string(&deployment.status).unwrap())
-        .bind(deployment.started_at.to_rfc3339())
-        .bind(deployment.completed_at.map(|dt| dt.to_rfc3339()))
+        .bind(deployment.started_at)
+        .bind(deployment.completed_at)
         .bind(&deployment.error_message)
         .execute(&self.pool)
         .await?;
@@ -225,7 +218,7 @@ impl Database {
         error_message: Option<String>,
     ) -> Result<()> {
         let completed_at = if matches!(status, DeploymentStatus::Completed | DeploymentStatus::Failed) {
-            Some(chrono::Utc::now().to_rfc3339())
+            Some(chrono::Utc::now())
         } else {
             None
         };
@@ -233,14 +226,14 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE deployments
-            SET status = ?, completed_at = ?, error_message = ?
-            WHERE id = ?
+            SET status = $1, completed_at = $2, error_message = $3
+            WHERE id = $4
             "#,
         )
         .bind(serde_json::to_string(&status).unwrap())
         .bind(completed_at)
         .bind(error_message)
-        .bind(id.to_string())
+        .bind(id)
         .execute(&self.pool)
         .await?;
 
@@ -249,9 +242,9 @@ impl Database {
 
     pub async fn get_deployment_by_id(&self, id: Uuid) -> Result<Option<Deployment>> {
         let row = sqlx::query_as::<_, DeploymentRow>(
-            "SELECT * FROM deployments WHERE id = ?"
+            "SELECT * FROM deployments WHERE id = $1"
         )
-        .bind(id.to_string())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -262,12 +255,12 @@ impl Database {
         let row = sqlx::query_as::<_, DeploymentRow>(
             r#"
             SELECT * FROM deployments
-            WHERE machine_id = ? AND status NOT IN ('"completed"', '"failed"')
+            WHERE machine_id = $1 AND status NOT IN ('"completed"', '"failed"')
             ORDER BY started_at DESC
             LIMIT 1
             "#
         )
-        .bind(machine_id.to_string())
+        .bind(machine_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -285,43 +278,41 @@ impl Database {
     }
 }
 
-// Row structures for SQLite
+// Row structures for PostgreSQL
 #[derive(sqlx::FromRow)]
 struct MachineRow {
-    id: String,
+    id: Uuid,
     mac_address: String,
     hostname: Option<String>,
     ip_address: Option<String>,
-    last_seen: String,
-    created_at: String,
+    last_seen: chrono::DateTime<chrono::Utc>,
+    created_at: chrono::DateTime<chrono::Utc>,
 }
 
-impl From<MachineRow> for Machine {
-    fn from(row: MachineRow) -> Self {
-        Machine {
-            id: Uuid::parse_str(&row.id).unwrap(),
-            mac_address: row.mac_address.parse().unwrap(),
+impl TryFrom<MachineRow> for Machine {
+    type Error = anyhow::Error;
+
+    fn try_from(row: MachineRow) -> std::result::Result<Self, Self::Error> {
+        Ok(Machine {
+            id: row.id,
+            mac_address: row.mac_address.parse()?,
             hostname: row.hostname,
             ip_address: row.ip_address.and_then(|ip| ip.parse().ok()),
-            last_seen: chrono::DateTime::parse_from_rfc3339(&row.last_seen)
-                .unwrap()
-                .with_timezone(&chrono::Utc),
-            created_at: chrono::DateTime::parse_from_rfc3339(&row.created_at)
-                .unwrap()
-                .with_timezone(&chrono::Utc),
-        }
+            last_seen: row.last_seen,
+            created_at: row.created_at,
+        })
     }
 }
 
 #[derive(sqlx::FromRow)]
 struct ImageRow {
-    id: String,
+    id: Uuid,
     name: String,
     description: Option<String>,
     image_type: String,
     file_path: String,
     size_bytes: i64,
-    created_at: String,
+    created_at: chrono::DateTime<chrono::Utc>,
     checksum: Option<String>,
 }
 
@@ -330,14 +321,13 @@ impl TryFrom<ImageRow> for WindowsImage {
 
     fn try_from(row: ImageRow) -> std::result::Result<Self, Self::Error> {
         Ok(WindowsImage {
-            id: Uuid::parse_str(&row.id)?,
+            id: row.id,
             name: row.name,
             description: row.description,
             image_type: serde_json::from_str(&row.image_type)?,
             file_path: row.file_path.into(),
             size_bytes: row.size_bytes as u64,
-            created_at: chrono::DateTime::parse_from_rfc3339(&row.created_at)?
-                .with_timezone(&chrono::Utc),
+            created_at: row.created_at,
             checksum: row.checksum,
         })
     }
@@ -345,12 +335,12 @@ impl TryFrom<ImageRow> for WindowsImage {
 
 #[derive(sqlx::FromRow)]
 struct DeploymentRow {
-    id: String,
-    machine_id: String,
-    image_id: String,
+    id: Uuid,
+    machine_id: Uuid,
+    image_id: Uuid,
     status: String,
-    started_at: String,
-    completed_at: Option<String>,
+    started_at: chrono::DateTime<chrono::Utc>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
     error_message: Option<String>,
 }
 
@@ -359,17 +349,12 @@ impl TryFrom<DeploymentRow> for Deployment {
 
     fn try_from(row: DeploymentRow) -> std::result::Result<Self, Self::Error> {
         Ok(Deployment {
-            id: Uuid::parse_str(&row.id)?,
-            machine_id: Uuid::parse_str(&row.machine_id)?,
-            image_id: Uuid::parse_str(&row.image_id)?,
+            id: row.id,
+            machine_id: row.machine_id,
+            image_id: row.image_id,
             status: serde_json::from_str(&row.status)?,
-            started_at: chrono::DateTime::parse_from_rfc3339(&row.started_at)?
-                .with_timezone(&chrono::Utc),
-            completed_at: row
-                .completed_at
-                .map(|dt| chrono::DateTime::parse_from_rfc3339(&dt))
-                .transpose()?
-                .map(|dt| dt.with_timezone(&chrono::Utc)),
+            started_at: row.started_at,
+            completed_at: row.completed_at,
             error_message: row.error_message,
         })
     }
