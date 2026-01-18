@@ -12,7 +12,10 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 - 🌐 **REST API**: Full API for automation and integration
 - 📊 **Deployment Tracking**: PostgreSQL database for tracking machines and deployments
 - 🔄 **Dynamic Boot Menus**: iPXE-based boot menus generated on-the-fly
-- 🛡️ **Security**: Safe Rust code with built-in protections against common vulnerabilities
+- 🔐 **Authentication & Authorization**: API key-based auth with role-based access control (RBAC)
+- 🔒 **TLS/HTTPS Support**: Optional encrypted communications (RFC 8446 compliant)
+- 🌐 **IPv6 Support**: Full dual-stack IPv4/IPv6 networking (RFC 2460 compliant)
+- 🛡️ **Security**: Safe Rust code with NIST SP 800-53 security controls
 
 ## Architecture
 
@@ -243,6 +246,168 @@ key_path = "/etc/snow-owl/server-key.pem"
 - TFTP remains unencrypted (required for network boot)
 - For production, use certificates from a trusted CA or Let's Encrypt
 
+### Authentication and Authorization
+
+Snow-Owl includes comprehensive API key-based authentication with role-based access control (RBAC) to secure your deployment infrastructure. Authentication is optional and can be enabled in the configuration.
+
+#### Authentication Overview
+
+The authentication system provides:
+- **API Key Authentication**: Secure Bearer token authentication for API access
+- **Role-Based Access Control (RBAC)**: Three privilege levels (Admin, Operator, ReadOnly)
+- **Secure Key Storage**: SHA-256 hashed API keys stored in the database
+- **Audit Logging**: Security events logged for compliance (NIST AU-2, AU-3)
+- **Key Expiration**: Optional expiration dates for API keys
+
+**NIST SP 800-53 Controls Implemented:**
+- AC-2: Account Management
+- AC-3: Access Enforcement
+- AC-6: Least Privilege
+- IA-2: Identification and Authentication
+- IA-5: Authenticator Management
+- AU-2: Audit Events
+- SC-12: Cryptographic Key Establishment
+- SC-13: Cryptographic Protection
+
+#### Enable Authentication
+
+Edit `/etc/snow-owl/config.toml`:
+
+```toml
+[auth]
+enabled = true
+require_auth = true  # Set to false to make authentication optional
+```
+
+#### User Roles
+
+Snow-Owl implements three privilege levels:
+
+| Role | Permissions | Use Case |
+|------|-------------|----------|
+| **Admin** | Full access to all operations | System administrators |
+| **Operator** | Create/manage deployments and images | Deployment engineers |
+| **ReadOnly** | View-only access to all resources | Auditors, monitoring systems |
+
+#### Creating Users
+
+**Create the first admin user:**
+
+```bash
+snow-owl user create admin --role admin
+```
+
+**Create additional users:**
+
+```bash
+# Create an operator
+snow-owl user create deploy-eng --role operator
+
+# Create a read-only user
+snow-owl user create auditor --role readonly
+```
+
+**List all users:**
+
+```bash
+snow-owl user list
+```
+
+**View user details:**
+
+```bash
+snow-owl user info admin
+```
+
+#### Managing API Keys
+
+**Generate an API key:**
+
+```bash
+snow-owl api-key create admin --name "Production API Key"
+
+# With expiration (90 days)
+snow-owl api-key create deploy-eng --name "Temporary Key" --expires 90
+```
+
+Output:
+```
+✓ API key created successfully
+
+  User: admin
+  Name: Production API Key
+  Key ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+  API Key: so_a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+⚠ IMPORTANT: Store this API key securely!
+  This is the only time you will see the full key.
+  The key is stored as a hash and cannot be recovered.
+```
+
+**List user's API keys:**
+
+```bash
+snow-owl api-key list admin
+```
+
+**Revoke an API key:**
+
+```bash
+snow-owl api-key revoke a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+#### Using API Keys
+
+All API requests must include the API key in the `Authorization` header:
+
+**List machines:**
+
+```bash
+curl -H "Authorization: Bearer so_a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  http://192.168.100.1:8080/api/machines
+```
+
+**Create a deployment:**
+
+```bash
+curl -X POST http://192.168.100.1:8080/api/deployments \
+  -H "Authorization: Bearer so_a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "machine_id": "uuid-of-machine",
+    "image_id": "uuid-of-image"
+  }'
+```
+
+**With HTTPS:**
+
+```bash
+curl -H "Authorization: Bearer so_a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  https://192.168.100.1:8443/api/images
+```
+
+#### Permission Requirements
+
+| Endpoint | Admin | Operator | ReadOnly |
+|----------|-------|----------|----------|
+| GET /api/machines | ✓ | ✓ | ✓ |
+| GET /api/images | ✓ | ✓ | ✓ |
+| POST /api/images | ✓ | ✓ | ✗ |
+| DELETE /api/images/:id | ✓ | ✓ | ✗ |
+| POST /api/deployments | ✓ | ✓ | ✗ |
+| GET /api/deployments | ✓ | ✓ | ✓ |
+
+#### Security Best Practices
+
+1. **Secure Key Storage**: Store API keys in environment variables or secure vaults
+2. **Key Rotation**: Regularly rotate API keys, especially for production systems
+3. **Least Privilege**: Use ReadOnly keys for monitoring and reporting
+4. **Set Expiration**: Use `--expires` for temporary or contractor access
+5. **Audit Regularly**: Review `snow-owl user list` and API key usage
+6. **Revoke Immediately**: Revoke compromised keys with `api-key revoke`
+7. **Use HTTPS**: Always use HTTPS in production to protect API keys in transit
+
 ## Setup Guide
 
 ### 1. Prepare iPXE Boot Files
@@ -432,18 +597,24 @@ snow-owl deploy list
 
 ### Using the REST API
 
-The HTTP server exposes a REST API on port 8080 (configurable).
+The HTTP server exposes a REST API on port 8080 (configurable). When authentication is enabled, all API requests require an API key in the `Authorization` header.
 
 #### List Images
 
 ```bash
+# Without authentication
 curl http://192.168.100.1:8080/api/images
+
+# With authentication
+curl -H "Authorization: Bearer so_your-api-key-here" \
+    http://192.168.100.1:8080/api/images
 ```
 
 #### Create a Deployment
 
 ```bash
 curl -X POST http://192.168.100.1:8080/api/deployments \
+    -H "Authorization: Bearer so_your-api-key-here" \
     -H "Content-Type: application/json" \
     -d '{
         "machine_id": "uuid-of-machine",
@@ -454,7 +625,7 @@ curl -X POST http://192.168.100.1:8080/api/deployments \
 #### Get Boot Menu
 
 ```bash
-# Main boot menu
+# Main boot menu (authentication not required for boot scripts)
 curl http://192.168.100.1:8080/boot.ipxe
 
 # Machine-specific boot (by MAC address)
@@ -606,14 +777,22 @@ Please report security vulnerabilities to the repository maintainers privately.
 ### Security Considerations
 
 - Snow-Owl requires root privileges for TFTP (port 69)
-- TFTP has built-in path traversal protection
-- Database uses PostgreSQL with parameterized queries
-- No authentication is implemented - deploy on trusted networks only
+- TFTP has built-in path traversal protection (NIST AC-3, SI-10)
+- Database uses PostgreSQL with parameterized queries (SQL injection prevention)
+- **Authentication**: API key-based authentication with SHA-256 hashing
+- **Authorization**: Role-based access control (Admin, Operator, ReadOnly)
+- **Encryption**: Optional TLS 1.3/1.2 support for HTTPS API access
+- **IPv6**: Full dual-stack support for modern networks
+- **Audit Logging**: Security events logged for compliance (NIST AU-2, AU-3)
+- **NIST Compliance**: Implements 21+ NIST SP 800-53 security controls
 - Consider using VLANs to isolate deployment network
+- For production: Enable authentication, use HTTPS, and deploy behind a firewall
 
 ## Roadmap
 
-- [ ] Add authentication and authorization
+- [x] Add authentication and authorization
+- [x] TLS/HTTPS support for encrypted API access
+- [x] IPv6 support for modern networks
 - [ ] Support for multicast deployment
 - [ ] Web UI for management
 - [ ] Image compression and deduplication
