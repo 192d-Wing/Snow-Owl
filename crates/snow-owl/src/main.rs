@@ -2,6 +2,7 @@ mod commands;
 mod config;
 
 use clap::{Parser, Subcommand};
+use commands::auth::{UserCommands, ApiKeyCommands};
 use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -38,6 +39,14 @@ enum Commands {
     /// Manage machines
     #[command(subcommand)]
     Machine(MachineCommands),
+
+    /// Manage users
+    #[command(subcommand)]
+    User(UserCommands),
+
+    /// Manage API keys
+    #[command(subcommand, name = "api-key")]
+    ApiKey(ApiKeyCommands),
 
     /// Initialize WinPE environment
     InitWinpe {
@@ -149,6 +158,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Machine(cmd) => {
             commands::machine::handle(&cli.config, cmd).await?;
+        }
+        Commands::User(cmd) => {
+            commands::auth::handle_user(&cli.config, cmd).await?;
+        }
+        Commands::ApiKey(cmd) => {
+            commands::auth::handle_api_key(&cli.config, cmd).await?;
         }
         Commands::InitWinpe { source, dest } => {
             commands::winpe::init(&cli.config, source, dest).await?;

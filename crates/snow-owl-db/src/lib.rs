@@ -74,6 +74,58 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // NIST AC-2: Account Management - users table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                last_login TIMESTAMPTZ
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // NIST IA-5: Authenticator Management - API keys table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id UUID PRIMARY KEY,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                key_hash TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ NOT NULL,
+                expires_at TIMESTAMPTZ,
+                last_used TIMESTAMPTZ
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // NIST AU-2: Audit Events - audit log table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id UUID PRIMARY KEY,
+                user_id UUID REFERENCES users(id),
+                action TEXT NOT NULL,
+                resource_type TEXT,
+                resource_id UUID,
+                ip_address INET,
+                user_agent TEXT,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
@@ -291,6 +343,195 @@ impl Database {
 
         Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
     }
+
+    // User operations
+
+    /// Create a new user account
+    ///
+    /// NIST Controls:
+    /// - AC-2: Account Management
+    /// - IA-2: Identification and Authentication
+    /// - AU-3: Content of Audit Records
+    pub async fn create_user(&self, user: &User) -> Result<()> {
+        // NIST SI-10: Parameterized query prevents SQL injection
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, username, role, created_at, last_login)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(user.id)
+        .bind(&user.username)
+        .bind(user.role.to_string())
+        .bind(user.created_at)
+        .bind(user.last_login)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get user by username
+    ///
+    /// NIST Controls:
+    /// - IA-2: Identification and Authentication
+    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            "SELECT * FROM users WHERE username = $1"
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.and_then(|r| r.try_into().ok()))
+    }
+
+    /// Get user by ID
+    pub async fn get_user_by_id(&self, id: Uuid) -> Result<Option<User>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            "SELECT * FROM users WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.and_then(|r| r.try_into().ok()))
+    }
+
+    /// Update user last login timestamp
+    ///
+    /// NIST Controls:
+    /// - AU-3: Content of Audit Records
+    pub async fn update_user_last_login(&self, user_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE users SET last_login = $1 WHERE id = $2"
+        )
+        .bind(chrono::Utc::now())
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// List all users
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        let rows = sqlx::query_as::<_, UserRow>(
+            "SELECT * FROM users ORDER BY created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
+    }
+
+    // API Key operations
+
+    /// Create a new API key
+    ///
+    /// NIST Controls:
+    /// - IA-5: Authenticator Management
+    /// - SC-12: Cryptographic Key Establishment
+    /// - SC-13: Cryptographic Protection (key hashing)
+    pub async fn create_api_key(&self, api_key: &ApiKey) -> Result<()> {
+        // NIST SC-13: Store hashed API key, never plaintext
+        sqlx::query(
+            r#"
+            INSERT INTO api_keys (id, user_id, name, key_hash, created_at, expires_at, last_used)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "#,
+        )
+        .bind(api_key.id)
+        .bind(api_key.user_id)
+        .bind(&api_key.name)
+        .bind(&api_key.key_hash)
+        .bind(api_key.created_at)
+        .bind(api_key.expires_at)
+        .bind(api_key.last_used)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Validate API key and return associated user
+    ///
+    /// NIST Controls:
+    /// - IA-2: Identification and Authentication (API key validation)
+    /// - AC-3: Access Enforcement (retrieve user permissions)
+    pub async fn validate_api_key(&self, key_hash: &str) -> Result<Option<(User, ApiKey)>> {
+        // NIST IA-2: Validate key hash and check expiration
+        let key_row = sqlx::query_as::<_, ApiKeyRow>(
+            r#"
+            SELECT * FROM api_keys
+            WHERE key_hash = $1
+            AND (expires_at IS NULL OR expires_at > NOW())
+            "#
+        )
+        .bind(key_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(key_row) = key_row {
+            let user_row = sqlx::query_as::<_, UserRow>(
+                "SELECT * FROM users WHERE id = $1"
+            )
+            .bind(key_row.user_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            if let Some(user_row) = user_row {
+                let user: User = user_row.try_into()?;
+                let api_key: ApiKey = key_row.try_into()?;
+                return Ok(Some((user, api_key)));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Update API key last used timestamp
+    ///
+    /// NIST Controls:
+    /// - AU-3: Content of Audit Records
+    pub async fn update_api_key_last_used(&self, key_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE api_keys SET last_used = $1 WHERE id = $2"
+        )
+        .bind(chrono::Utc::now())
+        .bind(key_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// List API keys for a user
+    pub async fn list_user_api_keys(&self, user_id: Uuid) -> Result<Vec<ApiKey>> {
+        let rows = sqlx::query_as::<_, ApiKeyRow>(
+            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC"
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
+    }
+
+    /// Revoke (delete) an API key
+    ///
+    /// NIST Controls:
+    /// - AC-2(4): Automated Audit Actions
+    pub async fn revoke_api_key(&self, key_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM api_keys WHERE id = $1"
+        )
+        .bind(key_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 // Row structures for PostgreSQL
@@ -371,6 +612,63 @@ impl TryFrom<DeploymentRow> for Deployment {
             started_at: row.started_at,
             completed_at: row.completed_at,
             error_message: row.error_message,
+        })
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct UserRow {
+    id: Uuid,
+    username: String,
+    role: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    last_login: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl TryFrom<UserRow> for User {
+    type Error = anyhow::Error;
+
+    fn try_from(row: UserRow) -> std::result::Result<Self, Self::Error> {
+        let role = match row.role.as_str() {
+            "admin" => UserRole::Admin,
+            "operator" => UserRole::Operator,
+            "readonly" => UserRole::ReadOnly,
+            _ => return Err(anyhow::anyhow!("Invalid user role: {}", row.role)),
+        };
+
+        Ok(User {
+            id: row.id,
+            username: row.username,
+            role,
+            created_at: row.created_at,
+            last_login: row.last_login,
+        })
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct ApiKeyRow {
+    id: Uuid,
+    user_id: Uuid,
+    name: String,
+    key_hash: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    last_used: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl TryFrom<ApiKeyRow> for ApiKey {
+    type Error = anyhow::Error;
+
+    fn try_from(row: ApiKeyRow) -> std::result::Result<Self, Self::Error> {
+        Ok(ApiKey {
+            id: row.id,
+            user_id: row.user_id,
+            name: row.name,
+            key_hash: row.key_hash,
+            created_at: row.created_at,
+            expires_at: row.expires_at,
+            last_used: row.last_used,
         })
     }
 }

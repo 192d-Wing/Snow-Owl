@@ -3,3 +3,4 @@ pub mod image;
 pub mod deploy;
 pub mod machine;
 pub mod winpe;
+pub mod auth;

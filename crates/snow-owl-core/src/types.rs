@@ -162,6 +162,87 @@ pub struct TlsConfig {
     pub key_path: PathBuf,
 }
 
+/// Authentication configuration
+///
+/// NIST Controls:
+/// - AC-2: Account Management (user account administration)
+/// - AC-3: Access Enforcement (role-based access control)
+/// - IA-2: Identification and Authentication (API key validation)
+/// - IA-5: Authenticator Management (API key lifecycle)
+/// - AU-2: Audit Events (authentication event logging)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    /// Enable authentication (disabled for testing/development)
+    /// NIST AC-2(1): Automated System Account Management
+    pub enabled: bool,
+    /// Require authentication for API endpoints
+    /// NIST AC-3: Access Enforcement
+    pub require_auth: bool,
+}
+
+/// User role for RBAC
+///
+/// NIST Controls:
+/// - AC-2(7): Role-based Schemes
+/// - AC-3: Access Enforcement
+/// - AC-6: Least Privilege
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserRole {
+    /// Full administrative access
+    /// NIST AC-6(2): Non-privileged Access for Nonsecurity Functions
+    Admin,
+    /// Can create deployments and manage machines
+    /// NIST AC-6(5): Privileged Accounts
+    Operator,
+    /// Read-only access to view status
+    /// NIST AC-6(10): Prohibit Non-privileged Users from Executing Privileged Functions
+    ReadOnly,
+}
+
+impl std::fmt::Display for UserRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserRole::Admin => write!(f, "admin"),
+            UserRole::Operator => write!(f, "operator"),
+            UserRole::ReadOnly => write!(f, "readonly"),
+        }
+    }
+}
+
+/// User account
+///
+/// NIST Controls:
+/// - AC-2: Account Management
+/// - IA-2: Identification and Authentication
+/// - AU-3: Content of Audit Records
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    pub role: UserRole,
+    pub created_at: DateTime<Utc>,
+    pub last_login: Option<DateTime<Utc>>,
+}
+
+/// API Key for authentication
+///
+/// NIST Controls:
+/// - IA-5: Authenticator Management
+/// - IA-5(1): Password-based Authentication (API key alternative)
+/// - SC-12: Cryptographic Key Establishment and Management
+/// - SC-13: Cryptographic Protection (key hashing)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub key_hash: String,  // SHA-256 hash of the API key
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used: Option<DateTime<Utc>>,
+}
+
 /// Server configuration
 ///
 /// NIST Controls:
@@ -183,6 +264,8 @@ pub struct ServerConfig {
     pub https_port: Option<u16>,
     /// NIST SC-13: Cryptographic Protection
     pub tls: Option<TlsConfig>,
+    /// NIST AC-2, AC-3, IA-2: Authentication and Access Control
+    pub auth: Option<AuthConfig>,
     /// NIST AC-3: Access Enforcement (filesystem path restriction)
     pub images_dir: PathBuf,
     /// NIST AC-3: Access Enforcement (filesystem path restriction)
@@ -211,6 +294,7 @@ impl Default for ServerConfig {
             http_port: 8080,
             https_port: Some(8443),
             tls: None, // TLS disabled by default
+            auth: None, // Auth disabled by default
             images_dir: PathBuf::from("/var/lib/snow-owl/images"),
             winpe_dir: PathBuf::from("/var/lib/snow-owl/winpe"),
             database_url: "postgresql://snow_owl:password@localhost/snow_owl".to_string(),

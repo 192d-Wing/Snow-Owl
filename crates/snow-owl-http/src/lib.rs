@@ -1,5 +1,6 @@
 mod api;
 mod ipxe;
+pub mod auth;
 
 use axum::{
     Router,
