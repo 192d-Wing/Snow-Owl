@@ -482,6 +482,10 @@ Contributions are welcome! Please:
 4. Add tests if applicable
 5. Submit a pull request
 
+### RFC Compliance
+
+Snow-Owl adheres to relevant IETF and networking standards. For detailed information about RFC compliance, including TFTP protocol implementation, network standards, and security considerations, see [RFC_COMPLIANCE.md](RFC_COMPLIANCE.md).
+
 ## License
 
 Snow-Owl is dual-licensed under MIT OR Apache-2.0.
