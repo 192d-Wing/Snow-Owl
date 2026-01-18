@@ -72,13 +72,27 @@ All RFC 1350 error codes are implemented (lines 48-58):
 **Section 6: Transfer Modes**
 
 ```rust
-// Lines 62-66
+// Transfer mode enumeration
 enum TransferMode {
-    Netascii, // ASCII mode with line ending conversion
-    Octet,    // Binary mode (8-bit bytes)
-    Mail,     // Mail mode (obsolete, recognized but not implemented)
+    Netascii, // ASCII mode with RFC-compliant line ending conversion (LF → CR+LF)
+    Octet,    // Binary mode (8-bit bytes, no conversion)
+    Mail,     // Mail mode (obsolete, explicitly rejected)
 }
 ```
+
+**NETASCII Implementation:**
+
+- Full line ending conversion: Unix LF (0x0A) → Network CR+LF (0x0D 0x0A) ✅
+- Preserves existing CR+LF sequences ✅
+- Handles bare CR characters correctly ✅
+- Applied during file transfer before sending DATA packets ✅
+
+**Transfer Mode Selection:**
+
+Files are transferred in the mode requested by the client:
+- Text files: NETASCII with line ending conversion
+- Binary files: OCTET without modification
+- MAIL mode: Rejected with error code 4
 
 **Section 7: Normal Termination**
 
@@ -671,19 +685,46 @@ To verify RFC compliance, the following tests should be performed:
 
 **RFC 1350 Section:** Transfer Modes
 
-**Status:** Parsed but Not Fully Implemented
+**Status:** ✅ **FULLY IMPLEMENTED**
+
+**Implementation Location:** `crates/snow-owl-tftp/src/lib.rs`
 
 **Current Behavior:**
-- NETASCII mode is recognized and accepted
-- No line ending conversion is performed
-- All transfers are effectively binary (OCTET mode)
+- NETASCII mode is fully implemented with RFC-compliant line ending conversion ✅
+- Unix line endings (LF) are converted to network standard (CR+LF) ✅
+- OCTET mode transfers data without conversion (binary mode) ✅
+- MAIL mode is explicitly rejected as obsolete ✅
 
-**Rationale:**
-- Windows deployment images are binary files (WIM/VHD/VHDX)
-- NETASCII mode not required for the use case
-- OCTET mode is sufficient for all operations
+**Implementation Details:**
 
-**Future Enhancement:** Could implement NETASCII conversion for text files
+```rust
+// NETASCII Conversion Function
+fn convert_to_netascii(data: &[u8]) -> Vec<u8> {
+    // Converts Unix LF (0x0A) to CR+LF (0x0D 0x0A)
+    // Handles CR, LF, and existing CR+LF sequences correctly
+    // RFC 1350 compliant line ending conversion
+}
+```
+
+**Transfer Mode Handling:**
+
+1. **NETASCII**: Line ending conversion for text files
+   - LF → CR+LF conversion
+   - Preserves existing CR+LF sequences
+   - Handles bare CR characters
+
+2. **OCTET**: Binary transfer without modification
+   - Used for Windows images (WIM/VHD/VHDX)
+   - No data transformation
+
+3. **MAIL**: Obsolete mode
+   - Recognized but explicitly rejected
+   - Returns error code 4 (Illegal TFTP operation)
+
+**NIST Controls:**
+- SI-10: Information Input Validation (mode validation and conversion)
+- SC-4: Information in Shared Resources (standardized encoding)
+- CM-6: Configuration Settings (transfer mode selection)
 
 ---
 
@@ -786,12 +827,22 @@ Snow-Owl has been designed for interoperability with:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-18 | 1.2 | Implemented NETASCII mode with full line ending conversion (RFC 1350) |
+| 2026-01-18 | 1.1 | Added comprehensive authentication and authorization system |
 | 2026-01-18 | 1.0 | Initial RFC compliance documentation |
 
 ---
 
 ## Conclusion
 
-Snow-Owl demonstrates strong adherence to relevant Internet standards (RFCs), particularly in its TFTP server implementation which fully complies with RFC 1350 and all related TFTP extension RFCs (2347, 2348, 2349). The project's design philosophy prioritizes standards compliance to ensure maximum interoperability with existing infrastructure while maintaining security best practices appropriate for a deployment tool intended for trusted network environments.
+Snow-Owl demonstrates strong adherence to relevant Internet standards (RFCs), particularly in its TFTP server implementation which fully complies with RFC 1350 (including NETASCII mode with line ending conversion) and all related TFTP extension RFCs (2347, 2348, 2349). The project's design philosophy prioritizes standards compliance to ensure maximum interoperability with existing infrastructure while maintaining security best practices appropriate for a deployment tool.
 
-Areas for future enhancement include expanded IPv6 support and optional NETASCII mode implementation, though these features are not critical for the primary use case of Windows system deployment.
+The implementation includes:
+- Full TFTP protocol support (RFC 1350) with NETASCII and OCTET modes
+- Complete TFTP option negotiation (RFC 2347, 2348, 2349)
+- Dual-stack IPv4/IPv6 networking (RFC 791, RFC 2460)
+- Optional TLS 1.3/1.2 encryption (RFC 8446)
+- Comprehensive authentication and authorization
+- NIST SP 800-53 security controls
+
+Snow-Owl provides a standards-compliant, secure, and interoperable platform for Windows system deployment in enterprise environments.
