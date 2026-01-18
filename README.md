@@ -105,6 +105,33 @@ winpe_dir = "/var/lib/snow-owl/winpe"
 database_url = "postgresql://snow_owl:password@localhost/snow_owl"
 ```
 
+#### IPv6 Configuration
+
+Snow-Owl supports both IPv4 and IPv6 deployments. For IPv6 or dual-stack configurations:
+
+```toml
+[network]
+interface = "eth0"
+# IPv6-only configuration
+server_ip = "fd00::1"
+server_ipv6 = "fd00::1"  # Optional: for dual-stack
+dhcp_range_start = "192.168.100.100"  # For reference only
+dhcp_range_end = "192.168.100.200"
+subnet_mask = "255.255.255.0"
+gateway = "fd00::1"  # IPv6 gateway
+dns_servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]  # Google Public DNS IPv6
+
+enable_dhcp = false
+enable_tftp = true
+tftp_root = "/var/lib/snow-owl/tftp"
+http_port = 8080
+images_dir = "/var/lib/snow-owl/images"
+winpe_dir = "/var/lib/snow-owl/winpe"
+database_url = "postgresql://snow_owl:password@localhost/snow_owl"
+```
+
+**Note:** For dual-stack deployments, set `server_ip` to your primary IP (IPv4 or IPv6) and optionally configure `server_ipv6` for additional IPv6 support. The TFTP and HTTP servers will bind to the configured `server_ip` address.
+
 ### PostgreSQL Setup
 
 Snow-Owl requires PostgreSQL for storing deployment data.

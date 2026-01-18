@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -74,7 +74,7 @@ pub struct Machine {
     pub id: Uuid,
     pub mac_address: MacAddress,
     pub hostname: Option<String>,
-    pub ip_address: Option<Ipv4Addr>,
+    pub ip_address: Option<IpAddr>,
     pub last_seen: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -127,12 +127,20 @@ impl std::fmt::Display for ImageType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     pub interface: String,
-    pub server_ip: Ipv4Addr,
+    /// Primary server IP address (IPv4 or IPv6)
+    pub server_ip: IpAddr,
+    /// Optional IPv6 server address for dual-stack deployments
+    pub server_ipv6: Option<Ipv6Addr>,
+    /// DHCP range start (IPv4) - for external DHCP configuration reference
     pub dhcp_range_start: Ipv4Addr,
+    /// DHCP range end (IPv4) - for external DHCP configuration reference
     pub dhcp_range_end: Ipv4Addr,
+    /// Subnet mask (IPv4) - for external DHCP configuration reference
     pub subnet_mask: Ipv4Addr,
-    pub gateway: Option<Ipv4Addr>,
-    pub dns_servers: Vec<Ipv4Addr>,
+    /// Gateway address (IPv4 or IPv6)
+    pub gateway: Option<IpAddr>,
+    /// DNS servers (IPv4 or IPv6)
+    pub dns_servers: Vec<IpAddr>,
 }
 
 /// Server configuration
@@ -153,12 +161,13 @@ impl Default for ServerConfig {
         Self {
             network: NetworkConfig {
                 interface: "eth0".to_string(),
-                server_ip: Ipv4Addr::new(192, 168, 100, 1),
+                server_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 100, 1)),
+                server_ipv6: None,
                 dhcp_range_start: Ipv4Addr::new(192, 168, 100, 100),
                 dhcp_range_end: Ipv4Addr::new(192, 168, 100, 200),
                 subnet_mask: Ipv4Addr::new(255, 255, 255, 0),
-                gateway: Some(Ipv4Addr::new(192, 168, 100, 1)),
-                dns_servers: vec![Ipv4Addr::new(8, 8, 8, 8)],
+                gateway: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 100, 1))),
+                dns_servers: vec![IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))],
             },
             enable_dhcp: true,
             enable_tftp: true,

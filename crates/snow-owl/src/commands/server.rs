@@ -44,9 +44,11 @@ pub async fn run(config_path: &Path) -> Result<()> {
     // Start TFTP server if enabled
     let tftp_handle = if config.enable_tftp {
         let tftp_root = config.tftp_root.clone();
-        let tftp_addr = SocketAddr::from(([0, 0, 0, 0], 69));
+        // Bind to the configured server IP (supports both IPv4 and IPv6)
+        let tftp_addr = SocketAddr::new(config.network.server_ip, 69);
         let tftp_server = TftpServer::new(tftp_root, tftp_addr);
 
+        info!("Starting TFTP server on {}", tftp_addr);
         Some(tokio::spawn(async move {
             if let Err(e) = tftp_server.run().await {
                 tracing::error!("TFTP server error: {}", e);

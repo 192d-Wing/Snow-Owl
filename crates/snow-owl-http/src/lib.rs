@@ -27,7 +27,8 @@ impl HttpServer {
     pub async fn run(&self) -> Result<()> {
         let app = self.create_router();
 
-        let addr = SocketAddr::from(([0, 0, 0, 0], self.config.http_port));
+        // Bind to the configured server IP (supports both IPv4 and IPv6)
+        let addr = SocketAddr::new(self.config.network.server_ip, self.config.http_port);
         info!("HTTP server listening on {}", addr);
 
         let listener = tokio::net::TcpListener::bind(addr).await?;

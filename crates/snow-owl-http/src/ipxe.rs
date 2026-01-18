@@ -4,7 +4,6 @@ use axum::{
     response::IntoResponse,
 };
 use snow_owl_core::{MacAddress, Machine};
-use std::net::Ipv4Addr;
 
 use crate::AppState;
 
@@ -143,7 +142,13 @@ pub async fn boot_mac(
     ))
 }
 
-fn generate_winpe_boot(server_ip: Ipv4Addr, http_port: u16, image_id: &str) -> String {
+fn generate_winpe_boot(server_ip: std::net::IpAddr, http_port: u16, image_id: &str) -> String {
+    // For IPv6 addresses, we need to wrap them in brackets for URL formatting
+    let ip_str = match server_ip {
+        std::net::IpAddr::V4(ip) => ip.to_string(),
+        std::net::IpAddr::V6(ip) => format!("[{}]", ip),
+    };
+
     format!(
         r#"set base-url http://{}:{}
 set image-id {}
@@ -153,6 +158,6 @@ initrd ${{base-url}}/winpe/boot/boot.sdi    boot.sdi
 initrd ${{base-url}}/winpe/sources/boot.wim boot.wim
 boot
 "#,
-        server_ip, http_port, image_id
+        ip_str, http_port, image_id
     )
 }
