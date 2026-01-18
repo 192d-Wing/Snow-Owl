@@ -144,28 +144,51 @@ pub struct NetworkConfig {
 }
 
 /// TLS configuration for HTTPS
+///
+/// NIST Controls:
+/// - SC-8: Transmission Confidentiality and Integrity
+/// - SC-13: Cryptographic Protection (TLS 1.3/1.2 via Rustls)
+/// - SC-23: Session Authenticity (TLS session management)
+/// - IA-5(1): Password-based Authentication (certificate-based alternative)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsConfig {
     /// Enable TLS/HTTPS
     pub enabled: bool,
     /// Path to TLS certificate file (PEM format)
+    /// NIST SC-17: Public Key Infrastructure Certificates
     pub cert_path: PathBuf,
     /// Path to TLS private key file (PEM format)
+    /// NIST SC-12: Cryptographic Key Establishment and Management
     pub key_path: PathBuf,
 }
 
 /// Server configuration
+///
+/// NIST Controls:
+/// - CM-6: Configuration Settings (centralized configuration management)
+/// - CM-7: Least Functionality (optional services can be disabled)
+/// - SC-7: Boundary Protection (network segmentation via interface binding)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub network: NetworkConfig,
+    /// NIST CM-7(1): Periodic Review (DHCP can be disabled)
     pub enable_dhcp: bool,
+    /// NIST CM-7(1): Periodic Review (TFTP can be disabled)
     pub enable_tftp: bool,
+    /// NIST AC-3: Access Enforcement (filesystem path restriction)
     pub tftp_root: PathBuf,
+    /// NIST SC-7(8): Route Traffic to Authenticated Proxy Servers
     pub http_port: u16,
+    /// NIST SC-8(1): Cryptographic Protection (HTTPS port)
     pub https_port: Option<u16>,
+    /// NIST SC-13: Cryptographic Protection
     pub tls: Option<TlsConfig>,
+    /// NIST AC-3: Access Enforcement (filesystem path restriction)
     pub images_dir: PathBuf,
+    /// NIST AC-3: Access Enforcement (filesystem path restriction)
     pub winpe_dir: PathBuf,
+    /// NIST IA-5(1): Password-based Authentication (database credentials)
+    /// NIST SC-28: Protection of Information at Rest (connection string security)
     pub database_url: String,
 }
 

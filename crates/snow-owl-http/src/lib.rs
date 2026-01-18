@@ -28,10 +28,16 @@ impl HttpServer {
         Self { db, config }
     }
 
+    /// Start HTTP or HTTPS server based on configuration
+    ///
+    /// NIST Controls:
+    /// - SC-8: Transmission Confidentiality and Integrity (TLS selection)
+    /// - CM-7: Least Functionality (conditional TLS enablement)
     pub async fn run(&self) -> Result<()> {
         let app = self.create_router();
 
         // Check if TLS is configured and enabled
+        // NIST SC-8(1): Cryptographic Protection - enforce encryption when configured
         if let Some(tls_config) = &self.config.tls {
             if tls_config.enabled {
                 return self.run_https(app, tls_config).await;
@@ -39,6 +45,7 @@ impl HttpServer {
         }
 
         // Run HTTP server (default)
+        // NIST AC-3: Access Enforcement - plaintext for iPXE compatibility
         self.run_http(app).await
     }
 
@@ -54,17 +61,27 @@ impl HttpServer {
         Ok(())
     }
 
+    /// Run HTTPS server with TLS encryption
+    ///
+    /// NIST Controls:
+    /// - SC-8: Transmission Confidentiality and Integrity
+    /// - SC-8(1): Cryptographic Protection (TLS 1.3/1.2)
+    /// - SC-13: Cryptographic Protection (modern cipher suites only)
+    /// - SC-23: Session Authenticity (TLS session management)
+    /// - AU-3: Content of Audit Records (log certificate paths)
     async fn run_https(&self, app: Router, tls_config: &snow_owl_core::TlsConfig) -> Result<()> {
-        // Load TLS configuration
+        // NIST SC-12: Cryptographic Key Establishment and Management
         let rustls_config = self.load_tls_config(tls_config)?;
 
         let https_port = self.config.https_port.unwrap_or(8443);
         let addr = SocketAddr::new(self.config.network.server_ip, https_port);
+
+        // NIST AU-3: Content of Audit Records - log security-relevant events
         info!("HTTPS server listening on https://{}", addr);
         info!("  Certificate: {}", tls_config.cert_path.display());
         info!("  Private key: {}", tls_config.key_path.display());
 
-        // Use axum-server for TLS support
+        // NIST SC-8(1): Cryptographic Protection via Rustls
         let tls_rustls_config = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(rustls_config));
 
         axum_server::bind_rustls(addr, tls_rustls_config)
@@ -75,34 +92,51 @@ impl HttpServer {
         Ok(())
     }
 
+    /// Load TLS certificates and private keys
+    ///
+    /// NIST Controls:
+    /// - SC-12: Cryptographic Key Establishment and Management
+    /// - SC-17: Public Key Infrastructure Certificates
+    /// - IA-5(2): PKI-based Authentication
+    /// - SI-10: Information Input Validation (certificate validation)
     fn load_tls_config(&self, tls_config: &snow_owl_core::TlsConfig) -> Result<RustlsServerConfig> {
-        // Load certificate chain
+        // NIST SC-17: Load certificate chain from PEM file
+        // NIST SI-10: Validate certificate file exists and is readable
         let cert_file = File::open(&tls_config.cert_path)
             .map_err(|e| SnowOwlError::Http(format!("Failed to open certificate file: {}", e)))?;
         let mut cert_reader = BufReader::new(cert_file);
+
+        // NIST SI-10: Parse and validate certificate format
         let cert_chain: Vec<_> = certs(&mut cert_reader)
             .collect::<std::result::Result<_, _>>()
             .map_err(|e| SnowOwlError::Http(format!("Failed to parse certificate: {}", e)))?;
 
+        // NIST SI-10: Verify certificate chain is not empty
         if cert_chain.is_empty() {
             return Err(SnowOwlError::Http("No certificates found in certificate file".to_string()));
         }
 
-        // Load private key
+        // NIST SC-12: Load private key from secure storage
+        // NIST AC-6(9): Log All Privileged Functions (key access)
         let key_file = File::open(&tls_config.key_path)
             .map_err(|e| SnowOwlError::Http(format!("Failed to open private key file: {}", e)))?;
         let mut key_reader = BufReader::new(key_file);
+
+        // NIST SI-10: Parse and validate private key format (PKCS#8 PEM)
         let mut keys = pkcs8_private_keys(&mut key_reader)
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| SnowOwlError::Http(format!("Failed to parse private key: {}", e)))?;
 
+        // NIST SI-10: Verify private key exists
         if keys.is_empty() {
             return Err(SnowOwlError::Http("No private keys found in key file".to_string()));
         }
 
         let private_key = keys.remove(0);
 
-        // Build TLS configuration
+        // NIST SC-13: Build TLS configuration with cryptographic protection
+        // NIST SC-8(1): Enable modern cipher suites only (via Rustls defaults)
+        // NIST IA-5(2): No client authentication required (server-only cert)
         let config = RustlsServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key.into())

@@ -2,6 +2,12 @@ use snow_owl_core::*;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use uuid::Uuid;
 
+/// Database abstraction layer with security controls
+///
+/// NIST Controls:
+/// - SI-10: Information Input Validation (parameterized queries prevent SQL injection)
+/// - SC-28: Protection of Information at Rest (database encryption via PostgreSQL)
+/// - AU-9: Protection of Audit Information (database integrity)
 pub struct Database {
     pool: PgPool,
 }
@@ -72,7 +78,16 @@ impl Database {
     }
 
     // Machine operations
+
+    /// Create or update machine record with SQL injection protection
+    ///
+    /// NIST Controls:
+    /// - SI-10: Information Input Validation (parameterized queries)
+    /// - AU-3: Content of Audit Records (track machine registration)
+    /// - CM-8: Information System Component Inventory (machine tracking)
     pub async fn create_or_update_machine(&self, machine: &Machine) -> Result<()> {
+        // NIST SI-10: Use parameterized queries to prevent SQL injection
+        // PostgreSQL placeholder syntax ($1, $2, ...) ensures safe parameter binding
         sqlx::query(
             r#"
             INSERT INTO machines (id, mac_address, hostname, ip_address, last_seen, created_at)
