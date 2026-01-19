@@ -129,15 +129,14 @@ pub async fn optional_auth_middleware(
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
-    if let Some(auth_value) = auth_header {
-        if let Some(token) = auth_value.strip_prefix("Bearer ") {
+    if let Some(auth_value) = auth_header
+        && let Some(token) = auth_value.strip_prefix("Bearer ") {
             let key_hash = hash_api_key(token);
 
             if let Ok(Some((user, _))) = db.validate_api_key(&key_hash).await {
                 request.extensions_mut().insert(AuthUser { user });
             }
         }
-    }
 
     next.run(request).await
 }

@@ -39,11 +39,10 @@ impl HttpServer {
 
         // Check if TLS is configured and enabled
         // NIST SC-8(1): Cryptographic Protection - enforce encryption when configured
-        if let Some(tls_config) = &self.config.tls {
-            if tls_config.enabled {
+        if let Some(tls_config) = &self.config.tls
+            && tls_config.enabled {
                 return self.run_https(app, tls_config).await;
             }
-        }
 
         // Run HTTP server (default)
         // NIST AC-3: Access Enforcement - plaintext for iPXE compatibility
