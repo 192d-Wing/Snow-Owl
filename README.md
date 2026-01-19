@@ -51,17 +51,20 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 ## Requirements
 
 ### Server Requirements
+
 - Linux server (Ubuntu 20.04+ recommended)
 - Rust 1.70+ (for building from source)
 - Root privileges (for TFTP port 69)
 - Network interface on deployment network
 
 ### Network Requirements
+
 - DHCP server (can be external) configured for PXE boot
 - DHCP option 66: TFTP server IP (Snow-Owl server)
 - DHCP option 67: Boot filename (`undionly.kpxe` or `ipxe.efi`)
 
 ### Windows Requirements
+
 - Windows ADK (Assessment and Deployment Kit) for creating WinPE
 - Windows installation media or custom WIM images
 
@@ -89,7 +92,7 @@ sudo cp target/release/snow-owl /usr/local/bin/
 sudo snow-owl server --init-config
 ```
 
-2. Edit the configuration file at `/etc/snow-owl/config.toml`:
+1. Edit the configuration file at `/etc/snow-owl/config.toml`:
 
 ```toml
 [network]
@@ -213,6 +216,7 @@ sudo ln -s /etc/letsencrypt/live/snow-owl.example.com/privkey.pem /etc/snow-owl/
 **Option 3: Use Your Organization's CA**
 
 Place your certificate and private key in PEM format at:
+
 - Certificate: `/etc/snow-owl/server-cert.pem`
 - Private key: `/etc/snow-owl/server-key.pem`
 
@@ -243,6 +247,7 @@ enable_http2 = true  # Enable HTTP/2 via ALPN (default: true)
 ```
 
 **Notes:**
+
 - When TLS is enabled, the HTTP server runs on the HTTPS port only
 - iPXE boot scripts are served over HTTPS
 - API endpoints are encrypted
@@ -304,16 +309,19 @@ retransmit_timeout_secs = 5  # Block retransmission timeout (default)
 #### Network Requirements
 
 **IPv4 Multicast:**
+
 - Multicast address range: `224.0.0.0` - `239.255.255.255`
 - Default: `224.0.1.1` (Local Network Control Block)
 - Requires IGMP support on network switches
 
 **IPv6 Multicast:**
+
 - Multicast address range: `ff00::/8`
 - Default: `ff12::8000:1` (Transient, Organization-Local)
 - Requires MLD support on network switches
 
 **IMPORTANT**: Ensure your network infrastructure supports multicast:
+
 - Switches must support IGMP snooping (IPv4) or MLD snooping (IPv6)
 - Routers must support multicast routing if deploying across subnets
 - Firewalls must allow multicast traffic on port 1758
@@ -344,6 +352,7 @@ Snow-Owl includes comprehensive API key-based authentication with role-based acc
 #### Authentication Overview
 
 The authentication system provides:
+
 - **API Key Authentication**: Secure Bearer token authentication for API access
 - **Role-Based Access Control (RBAC)**: Three privilege levels (Admin, Operator, ReadOnly)
 - **Secure Key Storage**: SHA-256 hashed API keys stored in the database
@@ -351,6 +360,7 @@ The authentication system provides:
 - **Key Expiration**: Optional expiration dates for API keys
 
 **NIST SP 800-53 Controls Implemented:**
+
 - AC-2: Account Management
 - AC-3: Access Enforcement
 - AC-6: Least Privilege
@@ -422,6 +432,7 @@ snow-owl api-key create deploy-eng --name "Temporary Key" --expires 90
 ```
 
 Output:
+
 ```
 ✓ API key created successfully
 
@@ -536,7 +547,7 @@ EOF
 copype amd64 C:\WinPE
 ```
 
-4. Customize WinPE with deployment scripts:
+1. Customize WinPE with deployment scripts:
 
 ```cmd
 Dism /Mount-Image /ImageFile:"C:\WinPE\media\sources\boot.wim" /Index:1 /MountDir:"C:\WinPE\mount"
@@ -881,18 +892,18 @@ Please report security vulnerabilities to the repository maintainers privately.
 
 ## Roadmap
 
-- [x] Add authentication and authorization
-- [x] TLS/HTTPS support for encrypted API access
-- [x] HTTP/2 support for improved API performance
-- [x] IPv6 support for modern networks
-- [x] Support for multicast deployment (RFC 2090)
-- [ ] Web UI for management
-- [ ] Image compression and deduplication
-- [ ] Support for Linux deployment
-- [ ] Automated driver injection
-- [ ] Post-deployment configuration hooks
-- [ ] Integration with Active Directory
-- [ ] Metrics and monitoring
+- ✅ Add authentication and authorization
+- ✅ TLS/HTTPS support for encrypted API access
+- ✅ HTTP/2 support for improved API performance
+- ✅ IPv6 support for modern networks
+- ✅ Support for multicast deployment (RFC 2090)
+- ❌ Web UI for management
+- ❌ Image compression and deduplication
+- ❌ Support for Linux deployment
+- ❌ Automated driver injection
+- ❌ Post-deployment configuration hooks
+- ❌ Integration with Active Directory
+- ❌ Metrics and monitoring
 
 ## Support
 
