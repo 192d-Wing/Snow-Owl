@@ -1,23 +1,23 @@
 mod api;
-mod ipxe;
 pub mod auth;
+mod ipxe;
 
 use axum::{
-    Router,
     routing::{get, post},
+    Router,
 };
+use rustls::ServerConfig as RustlsServerConfig;
+use rustls_pemfile::{certs, pkcs8_private_keys};
 use snow_owl_core::{Result, ServerConfig, SnowOwlError};
 use snow_owl_db::Database;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
-use tower_http::cors::CorsLayer;
 use tracing::info;
-use rustls::ServerConfig as RustlsServerConfig;
-use rustls_pemfile::{certs, pkcs8_private_keys};
 
 pub struct HttpServer {
     db: Arc<Database>,
@@ -86,7 +86,8 @@ impl HttpServer {
         info!("  Private key: {}", tls_config.key_path.display());
 
         // NIST SC-8(1): Cryptographic Protection via Rustls
-        let tls_rustls_config = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(rustls_config));
+        let tls_rustls_config =
+            axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(rustls_config));
 
         axum_server::bind_rustls(addr, tls_rustls_config)
             .serve(app.into_make_service())
@@ -120,7 +121,9 @@ impl HttpServer {
 
         // NIST SI-10: Verify certificate chain is not empty
         if cert_chain.is_empty() {
-            return Err(SnowOwlError::Http("No certificates found in certificate file".to_string()));
+            return Err(SnowOwlError::Http(
+                "No certificates found in certificate file".to_string(),
+            ));
         }
 
         // NIST SC-12: Load private key from secure storage
@@ -136,7 +139,9 @@ impl HttpServer {
 
         // NIST SI-10: Verify private key exists
         if keys.is_empty() {
-            return Err(SnowOwlError::Http("No private keys found in key file".to_string()));
+            return Err(SnowOwlError::Http(
+                "No private keys found in key file".to_string(),
+            ));
         }
 
         let private_key = keys.remove(0);
@@ -177,24 +182,28 @@ impl HttpServer {
             // iPXE endpoints
             .route("/boot.ipxe", get(ipxe::boot_menu))
             .route("/boot/:mac", get(ipxe::boot_mac))
-
             // API endpoints - Machines
             .route("/api/machines", get(api::list_machines))
             .route("/api/machines/:id", get(api::get_machine))
-
             // API endpoints - Images
             .route("/api/images", get(api::list_images).post(api::create_image))
-            .route("/api/images/:id", get(api::get_image).delete(api::delete_image))
-
+            .route(
+                "/api/images/:id",
+                get(api::get_image).delete(api::delete_image),
+            )
             // API endpoints - Deployments
-            .route("/api/deployments", get(api::list_deployments).post(api::create_deployment))
+            .route(
+                "/api/deployments",
+                get(api::list_deployments).post(api::create_deployment),
+            )
             .route("/api/deployments/:id", get(api::get_deployment))
-            .route("/api/deployments/:id/status", post(api::update_deployment_status))
-
+            .route(
+                "/api/deployments/:id/status",
+                post(api::update_deployment_status),
+            )
             // Static file serving for WinPE and images
             .nest_service("/winpe", ServeDir::new(&self.config.winpe_dir))
             .nest_service("/images", ServeDir::new(&self.config.images_dir))
-
             // Add middleware
             .layer(CorsLayer::permissive())
             .layer(TraceLayer::new_for_http())

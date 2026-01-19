@@ -7,17 +7,16 @@
 /// - IA-5: Authenticator Management
 /// - AU-2: Audit Events
 /// - AU-3: Content of Audit Records
-
 use axum::{
     extract::{Request, State},
-    http::{StatusCode, header::AUTHORIZATION},
+    http::{header::AUTHORIZATION, StatusCode},
     middleware::Next,
     response::Response,
 };
-use snow_owl_core::{User, UserRole, SnowOwlError, Result};
+use sha2::{Digest, Sha256};
+use snow_owl_core::{Result, SnowOwlError, User, UserRole};
 use snow_owl_db::Database;
 use std::sync::Arc;
-use sha2::{Sha256, Digest};
 use tracing::{info, warn};
 
 /// Authentication state passed through request extensions

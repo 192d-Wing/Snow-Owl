@@ -4,14 +4,13 @@
 /// - AC-2: Account Management
 /// - IA-5: Authenticator Management
 /// - AU-2: Audit Events
-
 use anyhow::{Context, Result};
 use chrono::Utc;
-use snow_owl_core::{User, ApiKey, UserRole};
+use snow_owl_core::{ApiKey, User, UserRole};
 use snow_owl_db::Database;
 use snow_owl_http::auth::{generate_api_key, hash_api_key};
-use uuid::Uuid;
 use std::path::Path;
+use uuid::Uuid;
 
 use crate::config;
 
@@ -89,7 +88,10 @@ pub async fn handle_user(config_path: &Path, cmd: UserCommands) -> Result<()> {
                 "operator" => UserRole::Operator,
                 "readonly" => UserRole::ReadOnly,
                 _ => {
-                    anyhow::bail!("Invalid role: {}. Must be one of: admin, operator, readonly", role);
+                    anyhow::bail!(
+                        "Invalid role: {}. Must be one of: admin, operator, readonly",
+                        role
+                    );
                 }
             };
 
@@ -110,7 +112,10 @@ pub async fn handle_user(config_path: &Path, cmd: UserCommands) -> Result<()> {
             println!("  Role: {}", user.role);
             println!("\nNext steps:");
             println!("  Generate an API key with:");
-            println!("  snow-owl api-key create {} --name \"My API Key\"", username);
+            println!(
+                "  snow-owl api-key create {} --name \"My API Key\"",
+                username
+            );
         }
 
         UserCommands::List => {
@@ -127,7 +132,10 @@ pub async fn handle_user(config_path: &Path, cmd: UserCommands) -> Result<()> {
                 for user in users {
                     println!("  {} ({})", user.username, user.role);
                     println!("    ID: {}", user.id);
-                    println!("    Created: {}", user.created_at.format("%Y-%m-%d %H:%M:%S"));
+                    println!(
+                        "    Created: {}",
+                        user.created_at.format("%Y-%m-%d %H:%M:%S")
+                    );
                     if let Some(last_login) = user.last_login {
                         println!("    Last login: {}", last_login.format("%Y-%m-%d %H:%M:%S"));
                     }
@@ -137,7 +145,9 @@ pub async fn handle_user(config_path: &Path, cmd: UserCommands) -> Result<()> {
         }
 
         UserCommands::Info { username } => {
-            let user = db.get_user_by_username(&username).await?
+            let user = db
+                .get_user_by_username(&username)
+                .await?
                 .context(format!("User not found: {}", username))?;
 
             println!("User: {}", user.username);
@@ -153,7 +163,10 @@ pub async fn handle_user(config_path: &Path, cmd: UserCommands) -> Result<()> {
             println!("\nAPI Keys: {}", keys.len());
             for key in keys {
                 println!("  {} ({})", key.name, key.id);
-                println!("    Created: {}", key.created_at.format("%Y-%m-%d %H:%M:%S"));
+                println!(
+                    "    Created: {}",
+                    key.created_at.format("%Y-%m-%d %H:%M:%S")
+                );
                 if let Some(expires) = key.expires_at {
                     println!("    Expires: {}", expires.format("%Y-%m-%d %H:%M:%S"));
                 }
@@ -183,9 +196,15 @@ pub async fn handle_api_key(config_path: &Path, cmd: ApiKeyCommands) -> Result<(
         .context("Failed to connect to database")?;
 
     match cmd {
-        ApiKeyCommands::Create { username, name, expires } => {
+        ApiKeyCommands::Create {
+            username,
+            name,
+            expires,
+        } => {
             // NIST IA-2: Lookup user
-            let user = db.get_user_by_username(&username).await?
+            let user = db
+                .get_user_by_username(&username)
+                .await?
                 .context(format!("User not found: {}", username))?;
 
             // NIST SC-12: Generate cryptographically secure API key
@@ -195,9 +214,7 @@ pub async fn handle_api_key(config_path: &Path, cmd: ApiKeyCommands) -> Result<(
             let key_hash = hash_api_key(&key);
 
             // NIST IA-5: Calculate expiration if specified
-            let expires_at = expires.map(|days| {
-                Utc::now() + chrono::Duration::days(days)
-            });
+            let expires_at = expires.map(|days| Utc::now() + chrono::Duration::days(days));
 
             // NIST IA-5: Create API key record
             let api_key = ApiKey {
@@ -234,7 +251,9 @@ pub async fn handle_api_key(config_path: &Path, cmd: ApiKeyCommands) -> Result<(
 
         ApiKeyCommands::List { username } => {
             // NIST AC-2: Lookup user
-            let user = db.get_user_by_username(&username).await?
+            let user = db
+                .get_user_by_username(&username)
+                .await?
                 .context(format!("User not found: {}", username))?;
 
             // NIST IA-5: List all API keys for user
@@ -250,7 +269,10 @@ pub async fn handle_api_key(config_path: &Path, cmd: ApiKeyCommands) -> Result<(
             } else {
                 for key in keys {
                     println!("  {} ({})", key.name, key.id);
-                    println!("    Created: {}", key.created_at.format("%Y-%m-%d %H:%M:%S"));
+                    println!(
+                        "    Created: {}",
+                        key.created_at.format("%Y-%m-%d %H:%M:%S")
+                    );
                     if let Some(expires) = key.expires_at {
                         let now = Utc::now();
                         if expires < now {
@@ -271,8 +293,7 @@ pub async fn handle_api_key(config_path: &Path, cmd: ApiKeyCommands) -> Result<(
 
         ApiKeyCommands::Revoke { key_id } => {
             // NIST IA-5: Parse key ID
-            let id = Uuid::parse_str(&key_id)
-                .context("Invalid API key ID format")?;
+            let id = Uuid::parse_str(&key_id).context("Invalid API key ID format")?;
 
             // NIST AC-2(4): Revoke API key
             db.revoke_api_key(id).await?;

@@ -28,7 +28,10 @@ async fn list(db: &Database) -> Result<()> {
         return Ok(());
     }
 
-    println!("\n{:<36} {:<36} {:<36} {:<12}", "ID", "Machine", "Image", "Status");
+    println!(
+        "\n{:<36} {:<36} {:<36} {:<12}",
+        "ID", "Machine", "Image", "Status"
+    );
     println!("{}", "-".repeat(130));
 
     for deployment in deployments {
@@ -72,7 +75,11 @@ async fn create(db: &Database, machine_id: String, image_id: String) -> Result<(
 
     println!("Deployment created successfully!");
     println!("  ID: {}", deployment.id);
-    println!("  Machine: {} ({})", machine.mac_address, machine.hostname.unwrap_or_default());
+    println!(
+        "  Machine: {} ({})",
+        machine.mac_address,
+        machine.hostname.unwrap_or_default()
+    );
     println!("  Image: {}", image.name);
     println!("\nThe machine will receive the deployment on next boot.");
 
@@ -92,7 +99,10 @@ async fn status(db: &Database, id: String) -> Result<()> {
     println!("\nDeployment Status:");
     println!("  ID: {}", deployment.id);
     println!("  Status: {:?}", deployment.status);
-    println!("  Started: {}", deployment.started_at.format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "  Started: {}",
+        deployment.started_at.format("%Y-%m-%d %H:%M:%S")
+    );
 
     if let Some(completed) = deployment.completed_at {
         println!("  Completed: {}", completed.format("%Y-%m-%d %H:%M:%S"));
@@ -126,8 +136,12 @@ async fn status(db: &Database, id: String) -> Result<()> {
 async fn cancel(db: &Database, id: String) -> Result<()> {
     let deployment_id = Uuid::parse_str(&id)?;
 
-    db.update_deployment_status(deployment_id, DeploymentStatus::Failed, Some("Cancelled by user".to_string()))
-        .await?;
+    db.update_deployment_status(
+        deployment_id,
+        DeploymentStatus::Failed,
+        Some("Cancelled by user".to_string()),
+    )
+    .await?;
 
     println!("Deployment {} cancelled.", deployment_id);
     Ok(())

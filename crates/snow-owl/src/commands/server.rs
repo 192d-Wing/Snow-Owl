@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use snow_owl_core::ServerConfig;
 use snow_owl_db::Database;
 use snow_owl_http::HttpServer;
-use snow_owl_tftp::TftpServer;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -52,28 +51,16 @@ pub async fn run(config_path: &Path) -> Result<()> {
     // NIST AU-3: Log database connection (without credentials)
     info!("Database connection established: {}", config.database_url);
 
-    // Start TFTP server if enabled
-    let tftp_handle = if config.enable_tftp {
-        let tftp_root = config.tftp_root.clone();
-        let multicast_config = config.multicast.clone();
-        // Bind to the configured server IP (supports both IPv4 and IPv6)
+    // TFTP now runs as a standalone service (snow-owl-tftp)
+    if config.enable_tftp {
         let tftp_addr = SocketAddr::new(config.network.server_ip, 69);
-
-        // RFC 2090: Enable multicast TFTP if configured
-        // NIST SC-5: Denial of Service Protection (efficient multicast deployment)
-        let tftp_server = TftpServer::new(tftp_root, tftp_addr)
-            .with_multicast(multicast_config);
-
-        info!("Starting TFTP server on {}", tftp_addr);
-        Some(tokio::spawn(async move {
-            if let Err(e) = tftp_server.run().await {
-                tracing::error!("TFTP server error: {}", e);
-            }
-        }))
+        info!(
+            "TFTP enabled in config; start the standalone server separately (bind {})",
+            tftp_addr
+        );
     } else {
         info!("TFTP server disabled");
-        None
-    };
+    }
 
     // Start HTTP server
     let http_server = HttpServer::new(db, config);
@@ -90,9 +77,6 @@ pub async fn run(config_path: &Path) -> Result<()> {
     info!("Shutting down...");
 
     // Note: In a production system, we would gracefully shut down the servers here
-    if let Some(handle) = tftp_handle {
-        handle.abort();
-    }
     http_handle.abort();
 
     Ok(())

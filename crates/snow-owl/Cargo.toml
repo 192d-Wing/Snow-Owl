@@ -13,7 +13,6 @@ path = "src/main.rs"
 [dependencies]
 snow-owl-core = { path = "../snow-owl-core" }
 snow-owl-db = { path = "../snow-owl-db" }
-snow-owl-tftp = { path = "../snow-owl-tftp" }
 snow-owl-http = { path = "../snow-owl-http" }
 tokio.workspace = true
 clap.workspace = true

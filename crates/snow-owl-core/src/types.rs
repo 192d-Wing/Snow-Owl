@@ -335,7 +335,7 @@ pub struct ApiKey {
     pub id: Uuid,
     pub user_id: Uuid,
     pub name: String,
-    pub key_hash: String,  // SHA-256 hash of the API key
+    pub key_hash: String, // SHA-256 hash of the API key
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used: Option<DateTime<Utc>>,
@@ -395,8 +395,8 @@ impl Default for ServerConfig {
             tftp_root: PathBuf::from("/var/lib/snow-owl/tftp"),
             http_port: 8080,
             https_port: Some(8443),
-            tls: None, // TLS disabled by default
-            auth: None, // Auth disabled by default
+            tls: None,                             // TLS disabled by default
+            auth: None,                            // Auth disabled by default
             multicast: MulticastConfig::default(), // Multicast disabled by default
             images_dir: PathBuf::from("/var/lib/snow-owl/images"),
             winpe_dir: PathBuf::from("/var/lib/snow-owl/winpe"),

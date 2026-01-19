@@ -12,9 +12,11 @@ pub async fn handle(config_path: &Path, command: ImageCommands) -> Result<()> {
 
     match command {
         ImageCommands::List => list(&db).await?,
-        ImageCommands::Add { name, path, description } => {
-            add(&db, name, path, description).await?
-        }
+        ImageCommands::Add {
+            name,
+            path,
+            description,
+        } => add(&db, name, path, description).await?,
         ImageCommands::Remove { name_or_id } => remove(&db, name_or_id).await?,
         ImageCommands::Info { name_or_id } => info(&db, name_or_id).await?,
     }
@@ -45,7 +47,12 @@ async fn list(db: &Database) -> Result<()> {
     Ok(())
 }
 
-async fn add(db: &Database, name: String, path: std::path::PathBuf, description: Option<String>) -> Result<()> {
+async fn add(
+    db: &Database,
+    name: String,
+    path: std::path::PathBuf,
+    description: Option<String>,
+) -> Result<()> {
     // Determine image type from extension
     let image_type = match path.extension().and_then(|e| e.to_str()) {
         Some("wim") => ImageType::Wim,
@@ -100,7 +107,10 @@ async fn info(db: &Database, name_or_id: String) -> Result<()> {
     println!("  Type: {}", image.image_type);
     println!("  Size: {:.2} MB", image.size_bytes as f64 / 1_048_576.0);
     println!("  Path: {}", image.file_path.display());
-    println!("  Created: {}", image.created_at.format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "  Created: {}",
+        image.created_at.format("%Y-%m-%d %H:%M:%S")
+    );
 
     if let Some(desc) = &image.description {
         println!("  Description: {}", desc);

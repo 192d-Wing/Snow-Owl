@@ -830,6 +830,55 @@ Snow-Owl/
 └── Cargo.toml             # Workspace configuration
 ```
 
+## Standalone TFTP Server (snow-owl-tftp)
+
+The TFTP server now runs as a standalone binary with a TOML config file.
+
+### Config File (TOML Schema)
+
+Default path: `/etc/snow-owl/tftp.toml`
+
+```toml
+root_dir = "/var/lib/snow-owl/tftp"
+bind_addr = "[::]:69"
+
+[logging]
+level = "info"
+format = "text" # "text" or "json"
+# file = "/var/log/snow-owl/tftp.log"
+
+[multicast]
+enabled = false
+multicast_addr = "ff12::8000:1"
+multicast_ip_version = "v6"
+multicast_port = 1758
+max_clients = 10
+master_timeout_secs = 30
+retransmit_timeout_secs = 5
+```
+
+### Validation Rules
+
+- `root_dir` must be an absolute path and must exist as a directory
+- `root_dir` must be readable by the server process
+- `bind_addr` must include a non-zero port
+- `multicast.multicast_port` must be in `1024..=65535`
+- `multicast.multicast_addr` must match `multicast.multicast_ip_version`
+- `logging.file` parent directory must exist and be writable
+
+### Init and Run
+
+```bash
+# Write a default config file
+sudo snow-owl-tftp --init-config
+
+# Run the server with the config file
+sudo snow-owl-tftp --config /etc/snow-owl/tftp.toml
+
+# Validate config without binding to the port
+snow-owl-tftp --config /etc/snow-owl/tftp.toml --check-config
+```
+
 ### Building
 
 ```bash

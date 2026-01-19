@@ -163,33 +163,28 @@ impl Database {
     }
 
     pub async fn get_machine_by_mac(&self, mac: &MacAddress) -> Result<Option<Machine>> {
-        let row = sqlx::query_as::<_, MachineRow>(
-            "SELECT * FROM machines WHERE mac_address = $1"
-        )
-        .bind(mac.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, MachineRow>("SELECT * FROM machines WHERE mac_address = $1")
+            .bind(mac.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn get_machine_by_id(&self, id: Uuid) -> Result<Option<Machine>> {
-        let row = sqlx::query_as::<_, MachineRow>(
-            "SELECT * FROM machines WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, MachineRow>("SELECT * FROM machines WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn list_machines(&self) -> Result<Vec<Machine>> {
-        let rows = sqlx::query_as::<_, MachineRow>(
-            "SELECT * FROM machines ORDER BY last_seen DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query_as::<_, MachineRow>("SELECT * FROM machines ORDER BY last_seen DESC")
+                .fetch_all(&self.pool)
+                .await?;
 
         Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
     }
@@ -217,33 +212,27 @@ impl Database {
     }
 
     pub async fn get_image_by_id(&self, id: Uuid) -> Result<Option<WindowsImage>> {
-        let row = sqlx::query_as::<_, ImageRow>(
-            "SELECT * FROM images WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, ImageRow>("SELECT * FROM images WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn get_image_by_name(&self, name: &str) -> Result<Option<WindowsImage>> {
-        let row = sqlx::query_as::<_, ImageRow>(
-            "SELECT * FROM images WHERE name = $1"
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, ImageRow>("SELECT * FROM images WHERE name = $1")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
     pub async fn list_images(&self) -> Result<Vec<WindowsImage>> {
-        let rows = sqlx::query_as::<_, ImageRow>(
-            "SELECT * FROM images ORDER BY created_at DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, ImageRow>("SELECT * FROM images ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
     }
@@ -284,7 +273,10 @@ impl Database {
         status: DeploymentStatus,
         error_message: Option<String>,
     ) -> Result<()> {
-        let completed_at = if matches!(status, DeploymentStatus::Completed | DeploymentStatus::Failed) {
+        let completed_at = if matches!(
+            status,
+            DeploymentStatus::Completed | DeploymentStatus::Failed
+        ) {
             Some(chrono::Utc::now())
         } else {
             None
@@ -308,24 +300,25 @@ impl Database {
     }
 
     pub async fn get_deployment_by_id(&self, id: Uuid) -> Result<Option<Deployment>> {
-        let row = sqlx::query_as::<_, DeploymentRow>(
-            "SELECT * FROM deployments WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, DeploymentRow>("SELECT * FROM deployments WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|r| r.try_into().ok()).flatten())
     }
 
-    pub async fn get_active_deployment_for_machine(&self, machine_id: Uuid) -> Result<Option<Deployment>> {
+    pub async fn get_active_deployment_for_machine(
+        &self,
+        machine_id: Uuid,
+    ) -> Result<Option<Deployment>> {
         let row = sqlx::query_as::<_, DeploymentRow>(
             r#"
             SELECT * FROM deployments
             WHERE machine_id = $1 AND status NOT IN ('"completed"', '"failed"')
             ORDER BY started_at DESC
             LIMIT 1
-            "#
+            "#,
         )
         .bind(machine_id)
         .fetch_optional(&self.pool)
@@ -336,7 +329,7 @@ impl Database {
 
     pub async fn list_deployments(&self) -> Result<Vec<Deployment>> {
         let rows = sqlx::query_as::<_, DeploymentRow>(
-            "SELECT * FROM deployments ORDER BY started_at DESC"
+            "SELECT * FROM deployments ORDER BY started_at DESC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -376,24 +369,20 @@ impl Database {
     /// NIST Controls:
     /// - IA-2: Identification and Authentication
     pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        let row = sqlx::query_as::<_, UserRow>(
-            "SELECT * FROM users WHERE username = $1"
-        )
-        .bind(username)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE username = $1")
+            .bind(username)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     /// Get user by ID
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<Option<User>> {
-        let row = sqlx::query_as::<_, UserRow>(
-            "SELECT * FROM users WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.and_then(|r| r.try_into().ok()))
     }
@@ -403,24 +392,20 @@ impl Database {
     /// NIST Controls:
     /// - AU-3: Content of Audit Records
     pub async fn update_user_last_login(&self, user_id: Uuid) -> Result<()> {
-        sqlx::query(
-            "UPDATE users SET last_login = $1 WHERE id = $2"
-        )
-        .bind(chrono::Utc::now())
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE users SET last_login = $1 WHERE id = $2")
+            .bind(chrono::Utc::now())
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
 
     /// List all users
     pub async fn list_users(&self) -> Result<Vec<User>> {
-        let rows = sqlx::query_as::<_, UserRow>(
-            "SELECT * FROM users ORDER BY created_at DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, UserRow>("SELECT * FROM users ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows.into_iter().filter_map(|r| r.try_into().ok()).collect())
     }
@@ -466,19 +451,17 @@ impl Database {
             SELECT * FROM api_keys
             WHERE key_hash = $1
             AND (expires_at IS NULL OR expires_at > NOW())
-            "#
+            "#,
         )
         .bind(key_hash)
         .fetch_optional(&self.pool)
         .await?;
 
         if let Some(key_row) = key_row {
-            let user_row = sqlx::query_as::<_, UserRow>(
-                "SELECT * FROM users WHERE id = $1"
-            )
-            .bind(key_row.user_id)
-            .fetch_optional(&self.pool)
-            .await?;
+            let user_row = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = $1")
+                .bind(key_row.user_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
             if let Some(user_row) = user_row {
                 let user: User = user_row.try_into()?;
@@ -495,13 +478,11 @@ impl Database {
     /// NIST Controls:
     /// - AU-3: Content of Audit Records
     pub async fn update_api_key_last_used(&self, key_id: Uuid) -> Result<()> {
-        sqlx::query(
-            "UPDATE api_keys SET last_used = $1 WHERE id = $2"
-        )
-        .bind(chrono::Utc::now())
-        .bind(key_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE api_keys SET last_used = $1 WHERE id = $2")
+            .bind(chrono::Utc::now())
+            .bind(key_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -509,7 +490,7 @@ impl Database {
     /// List API keys for a user
     pub async fn list_user_api_keys(&self, user_id: Uuid) -> Result<Vec<ApiKey>> {
         let rows = sqlx::query_as::<_, ApiKeyRow>(
-            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC"
+            "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -523,12 +504,10 @@ impl Database {
     /// NIST Controls:
     /// - AC-2(4): Automated Audit Actions
     pub async fn revoke_api_key(&self, key_id: Uuid) -> Result<()> {
-        sqlx::query(
-            "DELETE FROM api_keys WHERE id = $1"
-        )
-        .bind(key_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("DELETE FROM api_keys WHERE id = $1")
+            .bind(key_id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }

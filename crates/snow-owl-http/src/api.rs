@@ -198,7 +198,13 @@ pub async fn create_deployment(
     Json(req): Json<CreateDeploymentRequest>,
 ) -> Result<Json<ApiResponse<Deployment>>, StatusCode> {
     // Validate machine exists
-    if state.db.get_machine_by_id(req.machine_id).await.unwrap().is_none() {
+    if state
+        .db
+        .get_machine_by_id(req.machine_id)
+        .await
+        .unwrap()
+        .is_none()
+    {
         return Ok(Json(ApiResponse::error(format!(
             "Machine not found: {}",
             req.machine_id
@@ -206,7 +212,13 @@ pub async fn create_deployment(
     }
 
     // Validate image exists
-    if state.db.get_image_by_id(req.image_id).await.unwrap().is_none() {
+    if state
+        .db
+        .get_image_by_id(req.image_id)
+        .await
+        .unwrap()
+        .is_none()
+    {
         return Ok(Json(ApiResponse::error(format!(
             "Image not found: {}",
             req.image_id
@@ -237,7 +249,11 @@ pub async fn update_deployment_status(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateDeploymentStatusRequest>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    match state.db.update_deployment_status(id, req.status, req.error_message).await {
+    match state
+        .db
+        .update_deployment_status(id, req.status, req.error_message)
+        .await
+    {
         Ok(_) => Ok(Json(ApiResponse::ok(()))),
         Err(e) => {
             tracing::error!("Failed to update deployment status: {}", e);

@@ -8,8 +8,8 @@ pub async fn load_config(path: &Path) -> Result<ServerConfig> {
         .await
         .context("Failed to read configuration file")?;
 
-    let config: ServerConfig = toml::from_str(&contents)
-        .context("Failed to parse configuration file")?;
+    let config: ServerConfig =
+        toml::from_str(&contents).context("Failed to parse configuration file")?;
 
     Ok(config)
 }
@@ -20,8 +20,7 @@ pub async fn save_config(path: &Path, config: &ServerConfig) -> Result<()> {
         fs::create_dir_all(parent).await?;
     }
 
-    let contents = toml::to_string_pretty(config)
-        .context("Failed to serialize configuration")?;
+    let contents = toml::to_string_pretty(config).context("Failed to serialize configuration")?;
 
     fs::write(path, contents)
         .await

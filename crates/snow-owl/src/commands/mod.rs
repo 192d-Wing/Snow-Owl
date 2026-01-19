@@ -1,6 +1,6 @@
-pub mod server;
-pub mod image;
-pub mod deploy;
-pub mod machine;
-pub mod winpe;
 pub mod auth;
+pub mod deploy;
+pub mod image;
+pub mod machine;
+pub mod server;
+pub mod winpe;

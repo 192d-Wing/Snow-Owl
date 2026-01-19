@@ -2,7 +2,7 @@ mod commands;
 mod config;
 
 use clap::{Parser, Subcommand};
-use commands::auth::{UserCommands, ApiKeyCommands};
+use commands::auth::{ApiKeyCommands, UserCommands};
 use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

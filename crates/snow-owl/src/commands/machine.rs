@@ -26,7 +26,10 @@ async fn list(db: &Database) -> Result<()> {
         return Ok(());
     }
 
-    println!("\n{:<36} {:<17} {:<20} {:<15}", "ID", "MAC Address", "Hostname", "IP Address");
+    println!(
+        "\n{:<36} {:<17} {:<20} {:<15}",
+        "ID", "MAC Address", "Hostname", "IP Address"
+    );
     println!("{}", "-".repeat(90));
 
     for machine in machines {
@@ -35,7 +38,11 @@ async fn list(db: &Database) -> Result<()> {
             machine.id,
             machine.mac_address,
             machine.hostname.as_deref().unwrap_or("-"),
-            machine.ip_address.map(|ip| ip.to_string()).as_deref().unwrap_or("-")
+            machine
+                .ip_address
+                .map(|ip| ip.to_string())
+                .as_deref()
+                .unwrap_or("-")
         );
     }
 
@@ -66,15 +73,24 @@ async fn info(db: &Database, mac_or_id: String) -> Result<()> {
         println!("  IP Address: {}", ip);
     }
 
-    println!("  Created: {}", machine.created_at.format("%Y-%m-%d %H:%M:%S"));
-    println!("  Last Seen: {}", machine.last_seen.format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "  Created: {}",
+        machine.created_at.format("%Y-%m-%d %H:%M:%S")
+    );
+    println!(
+        "  Last Seen: {}",
+        machine.last_seen.format("%Y-%m-%d %H:%M:%S")
+    );
 
     // Show active deployments
     if let Some(deployment) = db.get_active_deployment_for_machine(machine.id).await? {
         println!("\nActive Deployment:");
         println!("  ID: {}", deployment.id);
         println!("  Status: {:?}", deployment.status);
-        println!("  Started: {}", deployment.started_at.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "  Started: {}",
+            deployment.started_at.format("%Y-%m-%d %H:%M:%S")
+        );
     }
 
     println!();
