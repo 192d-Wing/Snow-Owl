@@ -16,6 +16,7 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 - 🔒 **TLS/HTTPS Support**: Optional encrypted communications (RFC 8446 compliant)
 - 🚄 **HTTP/2 Support**: Optional HTTP/2 via ALPN for improved API performance (RFC 7540 compliant)
 - 🌐 **IPv6 Support**: Full dual-stack IPv4/IPv6 networking (RFC 2460 compliant)
+- 📡 **Multicast TFTP**: Efficient simultaneous deployment to multiple clients (RFC 2090 compliant)
 - 🛡️ **Security**: Safe Rust code with NIST SP 800-53 security controls
 
 ## Architecture
@@ -252,6 +253,89 @@ enable_http2 = true  # Enable HTTP/2 via ALPN (default: true)
   - Provides better performance for API clients with multiplexing and header compression
   - Automatically falls back to HTTP/1.1 for clients that don't support HTTP/2
   - HTTP/2 only available with HTTPS (plain HTTP uses HTTP/1.1)
+
+### Multicast TFTP Deployment
+
+Snow-Owl supports RFC 2090 multicast TFTP for efficient simultaneous deployment to multiple clients. This feature allows a single file transfer to be received by multiple machines simultaneously, significantly reducing network bandwidth usage.
+
+#### Benefits of Multicast Deployment
+
+- **Bandwidth Efficiency**: Each data packet is transmitted only once, regardless of client count
+- **Scalability**: Deploy to 10+ machines simultaneously without network congestion
+- **Coordinated Transfers**: Master client election ensures synchronized deployment
+- **Selective Retransmission**: Only missed blocks are retransmitted to specific clients
+
+#### Enable Multicast TFTP
+
+Edit `/etc/snow-owl/config.toml`:
+
+```toml
+[multicast]
+enabled = true
+multicast_addr = "224.0.1.1"  # IPv4 multicast group (default)
+# multicast_addr = "ff12::8000:1"  # IPv6 multicast group (alternative)
+multicast_port = 1758  # RFC 2090 registered port (default)
+max_clients = 10  # Maximum clients per session (default)
+master_timeout_secs = 30  # Master client election timeout (default)
+retransmit_timeout_secs = 5  # Block retransmission timeout (default)
+```
+
+#### Configuration Options
+
+| Option | Description | Default | Valid Range |
+|--------|-------------|---------|-------------|
+| `enabled` | Enable multicast TFTP | `false` | `true`/`false` |
+| `multicast_addr` | Multicast group address | `224.0.1.1` | IPv4/IPv6 multicast |
+| `multicast_port` | Multicast port | `1758` | `1024-65535` |
+| `max_clients` | Max clients per session | `10` | `1-100` |
+| `master_timeout_secs` | Master election timeout | `30` | `10-300` |
+| `retransmit_timeout_secs` | Retransmission timeout | `5` | `1-60` |
+
+#### How Multicast Works (RFC 2090)
+
+1. **Session Creation**: First client requests a file with multicast option
+2. **Master Election**: First client becomes the "master client"
+3. **Group Join**: Additional clients join the same multicast session
+4. **Data Transmission**: Server sends data packets to multicast group
+5. **ACK Coordination**: Each client acknowledges received blocks
+6. **Selective Retransmission**: Server retransmits missed blocks as needed
+7. **Completion**: Transfer completes when all clients have received all blocks
+
+#### Network Requirements
+
+**IPv4 Multicast:**
+- Multicast address range: `224.0.0.0` - `239.255.255.255`
+- Default: `224.0.1.1` (Local Network Control Block)
+- Requires IGMP support on network switches
+
+**IPv6 Multicast:**
+- Multicast address range: `ff00::/8`
+- Default: `ff12::8000:1` (Transient, Organization-Local)
+- Requires MLD support on network switches
+
+**IMPORTANT**: Ensure your network infrastructure supports multicast:
+- Switches must support IGMP snooping (IPv4) or MLD snooping (IPv6)
+- Routers must support multicast routing if deploying across subnets
+- Firewalls must allow multicast traffic on port 1758
+
+#### Usage Example
+
+Standard TFTP clients can request multicast transfers by including the multicast option:
+
+```bash
+# Example: iPXE script with multicast
+#!ipxe
+dhcp
+set tftp-opts multicast
+chain tftp://${next-server}/winpe/boot.wim
+```
+
+#### Security Considerations (NIST Controls)
+
+- **SC-5**: Denial of Service Protection - Efficient bandwidth usage prevents network saturation
+- **SC-7**: Boundary Protection - Multicast groups provide network isolation
+- **AC-3**: Access Enforcement - Session membership control and max client limits
+- **AU-2**: Audit Events - Comprehensive logging of multicast sessions and client activity
 
 ### Authentication and Authorization
 
@@ -801,7 +885,7 @@ Please report security vulnerabilities to the repository maintainers privately.
 - [x] TLS/HTTPS support for encrypted API access
 - [x] HTTP/2 support for improved API performance
 - [x] IPv6 support for modern networks
-- [ ] Support for multicast deployment
+- [x] Support for multicast deployment (RFC 2090)
 - [ ] Web UI for management
 - [ ] Image compression and deduplication
 - [ ] Support for Linux deployment

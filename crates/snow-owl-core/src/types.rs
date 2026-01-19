@@ -172,6 +172,94 @@ fn default_enable_http2() -> bool {
     true
 }
 
+/// Multicast TFTP configuration (RFC 2090)
+///
+/// RFC 2090: TFTP Multicast Option (Experimental)
+/// - Allows efficient simultaneous deployment to multiple clients
+/// - Reduces network bandwidth by transmitting each packet once
+/// - Supports master client election and per-client ACK tracking
+///
+/// NIST Controls:
+/// - SC-5: Denial of Service Protection (efficient bandwidth usage)
+/// - CM-7: Least Functionality (optional multicast deployment)
+/// - SC-7: Boundary Protection (multicast group isolation)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MulticastConfig {
+    /// Enable multicast TFTP deployments
+    /// NIST CM-7(1): Periodic Review - can be disabled
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Multicast group address (IPv4 or IPv6)
+    /// RFC 2090: Clients join this group to receive data
+    /// Default IPv4: 224.0.1.1 (Local Network Control Block)
+    /// Default IPv6: ff12::8000:1 (Transient, Organization-Local)
+    /// NIST SC-7(13): Isolation of Security Tools
+    #[serde(default = "default_multicast_addr")]
+    pub multicast_addr: IpAddr,
+
+    /// Multicast port for TFTP data transmission
+    /// RFC 2090: Registered port 1758 (tftp-mcast)
+    /// NIST SC-7(11): Restrict Incoming Communications Traffic
+    #[serde(default = "default_multicast_port")]
+    pub multicast_port: u16,
+
+    /// Maximum number of clients per multicast session
+    /// NIST SC-5: Denial of Service Protection (resource limits)
+    #[serde(default = "default_max_clients")]
+    pub max_clients: usize,
+
+    /// Master client election timeout in seconds
+    /// RFC 2090: Time to wait for master client responses
+    /// NIST SC-5(2): Capacity, Bandwidth, and Redundancy
+    #[serde(default = "default_master_timeout")]
+    pub master_timeout_secs: u64,
+
+    /// Block retransmission timeout in seconds
+    /// RFC 2090: Time to wait before retransmitting missed blocks
+    /// NIST SC-5(2): Capacity, Bandwidth, and Redundancy
+    #[serde(default = "default_retransmit_timeout")]
+    pub retransmit_timeout_secs: u64,
+}
+
+/// Default multicast address (IPv4: 224.0.1.1)
+fn default_multicast_addr() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::new(224, 0, 1, 1))
+}
+
+/// Default multicast port (1758 - RFC 2090 registered port)
+fn default_multicast_port() -> u16 {
+    1758
+}
+
+/// Default maximum clients per session
+fn default_max_clients() -> usize {
+    10
+}
+
+/// Default master client timeout (30 seconds)
+fn default_master_timeout() -> u64 {
+    30
+}
+
+/// Default retransmission timeout (5 seconds)
+fn default_retransmit_timeout() -> u64 {
+    5
+}
+
+impl Default for MulticastConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            multicast_addr: default_multicast_addr(),
+            multicast_port: default_multicast_port(),
+            max_clients: default_max_clients(),
+            master_timeout_secs: default_master_timeout(),
+            retransmit_timeout_secs: default_retransmit_timeout(),
+        }
+    }
+}
+
 /// Authentication configuration
 ///
 /// NIST Controls:
@@ -276,6 +364,10 @@ pub struct ServerConfig {
     pub tls: Option<TlsConfig>,
     /// NIST AC-2, AC-3, IA-2: Authentication and Access Control
     pub auth: Option<AuthConfig>,
+    /// RFC 2090: Multicast TFTP configuration
+    /// NIST SC-5: Denial of Service Protection (efficient deployment)
+    #[serde(default)]
+    pub multicast: MulticastConfig,
     /// NIST AC-3: Access Enforcement (filesystem path restriction)
     pub images_dir: PathBuf,
     /// NIST AC-3: Access Enforcement (filesystem path restriction)
@@ -305,6 +397,7 @@ impl Default for ServerConfig {
             https_port: Some(8443),
             tls: None, // TLS disabled by default
             auth: None, // Auth disabled by default
+            multicast: MulticastConfig::default(), // Multicast disabled by default
             images_dir: PathBuf::from("/var/lib/snow-owl/images"),
             winpe_dir: PathBuf::from("/var/lib/snow-owl/winpe"),
             database_url: "postgresql://snow_owl:password@localhost/snow_owl".to_string(),

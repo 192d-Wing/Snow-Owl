@@ -444,6 +444,113 @@ enable_http2 = true  # Enable HTTP/2 via ALPN (default: true)
 
 ---
 
+### RFC 2090 - TFTP Multicast Option
+
+**Status:** ✅ **FULLY COMPLIANT** (Optional Feature)
+
+**Implementation:** Custom multicast TFTP server
+
+**Implementation Location:** `crates/snow-owl-tftp/src/multicast.rs`
+
+**Multicast TFTP Support:**
+
+- Multicast session management ✅
+- Master client election ✅
+- Per-client ACK tracking ✅
+- Selective block retransmission ✅
+- IPv4 and IPv6 multicast groups ✅
+- Configurable session parameters ✅
+- Client timeout and cleanup ✅
+
+**RFC 2090 Features Implemented:**
+
+```rust
+// Multicast session state tracking
+struct MulticastSession {
+    clients: HashMap<SocketAddr, ClientState>,
+    master_client: Option<SocketAddr>,
+    retransmit_queue: HashSet<u16>,
+    // ...
+}
+
+// Master client election (first client)
+fn add_client(&mut self, addr: SocketAddr) -> Result<bool> {
+    let is_master = self.clients.is_empty();
+    if is_master {
+        self.master_client = Some(addr);
+    }
+    // ...
+}
+
+// Per-client ACK tracking
+fn record_ack(&mut self, addr: SocketAddr, block_num: u16) {
+    if let Some(client) = self.clients.get_mut(&addr) {
+        client.mark_acked(block_num);
+    }
+}
+
+// Selective retransmission
+fn queue_retransmit(&mut self, block_num: u16) {
+    self.retransmit_queue.insert(block_num);
+}
+```
+
+**Configuration:**
+
+```toml
+[multicast]
+enabled = true
+multicast_addr = "224.0.1.1"  # IPv4 multicast group (RFC 2090)
+multicast_port = 1758  # RFC 2090 registered port (tftp-mcast)
+max_clients = 10
+master_timeout_secs = 30
+retransmit_timeout_secs = 5
+```
+
+**Multicast Option Format:**
+
+```
+multicast,<addr>,<port>,<master>
+```
+
+- `addr`: Multicast group address (IPv4 or IPv6)
+- `port`: Multicast port (default: 1758)
+- `master`: 1 if client is master, 0 otherwise
+
+**Session Workflow:**
+
+1. **RRQ with multicast option**: Client requests file with `multicast` option
+2. **OACK response**: Server responds with multicast parameters
+3. **Master election**: First client becomes master
+4. **Group transmission**: Server sends DATA to multicast group
+5. **ACK coordination**: Each client sends ACK for received blocks
+6. **Retransmission**: Server retransmits missed blocks to multicast group
+7. **Completion**: Transfer completes when all clients have all blocks
+
+**Benefits:**
+
+- **Bandwidth Efficiency**: Each packet transmitted once for N clients
+- **Scalability**: Deploy to 10+ clients simultaneously
+- **Reliability**: Per-client state tracking ensures all clients receive all data
+- **Network-Friendly**: Reduces network congestion during mass deployments
+
+**Limitations (RFC 2090 Status: Experimental):**
+
+- Requires multicast-capable network infrastructure
+- IGMP (IPv4) or MLD (IPv6) support required
+- Network switches must support multicast snooping
+- Not all TFTP clients support multicast option
+
+**NIST Controls:**
+
+- SC-5: Denial of Service Protection (efficient bandwidth usage)
+- SC-7: Boundary Protection (multicast group isolation)
+- AC-3: Access Enforcement (session membership control)
+- AU-2: Audit Events (comprehensive session logging)
+- SC-5(2): Capacity, Bandwidth, and Redundancy (multicast optimization)
+
+---
+
 ### RFC 8446 - The Transport Layer Security (TLS) Protocol Version 1.3
 
 **Status:** ✅ **FULLY COMPLIANT** (Optional Feature)
@@ -799,6 +906,7 @@ fn convert_to_netascii(data: &[u8]) -> Vec<u8> {
 | RFC | Title | Status | Coverage |
 |-----|-------|--------|----------|
 | **1350** | TFTP Protocol (Revision 2) | ✅ Full | 100% (read-only) |
+| **2090** | TFTP Multicast Option | ✅ Full | Optional (Experimental) |
 | **2347** | TFTP Option Extension | ✅ Full | 100% |
 | **2348** | TFTP Blocksize Option | ✅ Full | 100% |
 | **2349** | TFTP Timeout Interval and Transfer Size | ✅ Full | 100% |
@@ -879,6 +987,7 @@ Snow-Owl has been designed for interoperability with:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-18 | 1.4 | Implemented multicast TFTP support (RFC 2090) with master client election and selective retransmission |
 | 2026-01-18 | 1.3 | Added HTTP/2 support via ALPN for HTTPS connections (RFC 7540) |
 | 2026-01-18 | 1.2 | Implemented NETASCII mode with full line ending conversion (RFC 1350) |
 | 2026-01-18 | 1.1 | Added comprehensive authentication and authorization system |
@@ -888,14 +997,16 @@ Snow-Owl has been designed for interoperability with:
 
 ## Conclusion
 
-Snow-Owl demonstrates strong adherence to relevant Internet standards (RFCs), particularly in its TFTP server implementation which fully complies with RFC 1350 (including NETASCII mode with line ending conversion) and all related TFTP extension RFCs (2347, 2348, 2349). The project's design philosophy prioritizes standards compliance to ensure maximum interoperability with existing infrastructure while maintaining security best practices appropriate for a deployment tool.
+Snow-Owl demonstrates strong adherence to relevant Internet standards (RFCs), particularly in its TFTP server implementation which fully complies with RFC 1350 (including NETASCII mode with line ending conversion) and all related TFTP extension RFCs (2090, 2347, 2348, 2349). The project's design philosophy prioritizes standards compliance to ensure maximum interoperability with existing infrastructure while maintaining security best practices appropriate for a deployment tool.
 
 The implementation includes:
 - Full TFTP protocol support (RFC 1350) with NETASCII and OCTET modes
+- Multicast TFTP for efficient mass deployments (RFC 2090)
 - Complete TFTP option negotiation (RFC 2347, 2348, 2349)
 - Dual-stack IPv4/IPv6 networking (RFC 791, RFC 2460)
 - Optional TLS 1.3/1.2 encryption (RFC 8446)
+- Optional HTTP/2 support via ALPN (RFC 7540)
 - Comprehensive authentication and authorization
 - NIST SP 800-53 security controls
 
-Snow-Owl provides a standards-compliant, secure, and interoperable platform for Windows system deployment in enterprise environments.
+Snow-Owl provides a standards-compliant, secure, and highly scalable platform for Windows system deployment in enterprise environments, supporting both unicast and multicast deployment scenarios.

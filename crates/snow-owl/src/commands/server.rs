@@ -55,9 +55,14 @@ pub async fn run(config_path: &Path) -> Result<()> {
     // Start TFTP server if enabled
     let tftp_handle = if config.enable_tftp {
         let tftp_root = config.tftp_root.clone();
+        let multicast_config = config.multicast.clone();
         // Bind to the configured server IP (supports both IPv4 and IPv6)
         let tftp_addr = SocketAddr::new(config.network.server_ip, 69);
-        let tftp_server = TftpServer::new(tftp_root, tftp_addr);
+
+        // RFC 2090: Enable multicast TFTP if configured
+        // NIST SC-5: Denial of Service Protection (efficient multicast deployment)
+        let tftp_server = TftpServer::new(tftp_root, tftp_addr)
+            .with_multicast(multicast_config);
 
         info!("Starting TFTP server on {}", tftp_addr);
         Some(tokio::spawn(async move {
