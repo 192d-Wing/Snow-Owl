@@ -127,9 +127,10 @@ async fn info(db: &Database, name_or_id: String) -> Result<()> {
 async fn find_image(db: &Database, name_or_id: &str) -> Result<WindowsImage> {
     // Try as UUID first
     if let Ok(id) = Uuid::parse_str(name_or_id)
-        && let Some(image) = db.get_image_by_id(id).await? {
-            return Ok(image);
-        }
+        && let Some(image) = db.get_image_by_id(id).await?
+    {
+        return Ok(image);
+    }
 
     // Try as name
     if let Some(image) = db.get_image_by_name(name_or_id).await? {
