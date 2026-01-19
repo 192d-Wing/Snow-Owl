@@ -49,7 +49,7 @@ pub async fn boot_menu(State(state): State<AppState>) -> Result<impl IntoRespons
             http_port,
             &image.id.to_string(),
         ));
-        menu.push_str("\n");
+        menu.push('\n');
     }
 
     menu.push_str(":shell\n");

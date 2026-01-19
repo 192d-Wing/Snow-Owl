@@ -168,7 +168,7 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn get_machine_by_id(&self, id: Uuid) -> Result<Option<Machine>> {
@@ -177,7 +177,7 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn list_machines(&self) -> Result<Vec<Machine>> {
@@ -217,7 +217,7 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn get_image_by_name(&self, name: &str) -> Result<Option<WindowsImage>> {
@@ -226,7 +226,7 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn list_images(&self) -> Result<Vec<WindowsImage>> {
@@ -305,7 +305,7 @@ impl Database {
             .fetch_optional(&self.pool)
             .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn get_active_deployment_for_machine(
@@ -324,7 +324,7 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| r.try_into().ok()).flatten())
+        Ok(row.and_then(|r| r.try_into().ok()))
     }
 
     pub async fn list_deployments(&self) -> Result<Vec<Deployment>> {

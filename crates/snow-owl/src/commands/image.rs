@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use snow_owl_core::{ImageType, WindowsImage};
 use snow_owl_db::Database;
 use std::path::Path;

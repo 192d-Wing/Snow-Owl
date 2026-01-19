@@ -14,7 +14,7 @@ use axum::{
     response::Response,
 };
 use sha2::{Digest, Sha256};
-use snow_owl_core::{Result, SnowOwlError, User, UserRole};
+use snow_owl_core::{SnowOwlError, User, UserRole};
 use snow_owl_db::Database;
 use std::sync::Arc;
 use tracing::{info, warn};
