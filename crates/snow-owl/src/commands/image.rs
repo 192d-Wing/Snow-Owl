@@ -4,7 +4,7 @@ use snow_owl_db::Database;
 use std::path::Path;
 use uuid::Uuid;
 
-use crate::{config, ImageCommands};
+use crate::{ImageCommands, config};
 
 pub async fn handle(config_path: &Path, command: ImageCommands) -> Result<()> {
     let config = config::load_config(config_path).await?;

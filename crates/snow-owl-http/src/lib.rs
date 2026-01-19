@@ -3,8 +3,8 @@ pub mod auth;
 mod ipxe;
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 use rustls::ServerConfig as RustlsServerConfig;
 use rustls_pemfile::{certs, pkcs8_private_keys};

@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 use snow_owl_core::{Deployment, DeploymentStatus, ImageType, Machine, WindowsImage};
