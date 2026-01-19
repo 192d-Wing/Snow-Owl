@@ -1,0 +1,30 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (we'll copy what we need)
+*.md
+docs/
+
+# Tests (will be added explicitly)
+**/test-results/
+/tmp/
+
+# CI/CD
+.github/
