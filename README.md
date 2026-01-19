@@ -17,6 +17,7 @@ Snow-Owl provides a complete PXE boot infrastructure for deploying Windows image
 - 🚄 **HTTP/2 Support**: Optional HTTP/2 via ALPN for improved API performance (RFC 7540 compliant)
 - 🌐 **IPv6 Support**: Full dual-stack IPv4/IPv6 networking (RFC 2460 compliant)
 - 📡 **Multicast TFTP**: Efficient simultaneous deployment to multiple clients (RFC 2090 compliant)
+- 📊 **SIEM Integration**: Comprehensive audit logging with JSON format for security monitoring
 - 🛡️ **Security**: Safe Rust code with NIST SP 800-53 security controls
 
 ## Architecture
@@ -829,6 +830,123 @@ Snow-Owl/
 │   └── customize-winpe.sh # WinPE customization helper
 └── Cargo.toml             # Workspace configuration
 ```
+
+## SIEM Integration and Audit Logging
+
+Snow-Owl TFTP provides comprehensive structured audit logging designed for Security Information and Event Management (SIEM) integration. All security-relevant events are logged in JSON format for easy parsing and analysis.
+
+### Features
+
+- **Structured JSON Logging**: Machine-parsable audit events for SIEM ingestion
+- **Comprehensive Event Coverage**: Server lifecycle, file access, security violations, and multicast sessions
+- **Performance Metrics**: Throughput, transfer duration, and block-level timing statistics
+- **Correlation IDs**: Transaction tracing across related events (read_request → transfer_started → transfer_completed)
+- **NIST Compliance**: Satisfies AU-2, AU-3, AU-6, AU-9, AU-12 requirements
+- **Multiple SIEM Platforms**: Integration guides for Splunk, ELK, Datadog, CloudWatch, Fluentd
+
+### Quick Start
+
+Audit logging is **enabled by default** with JSON format:
+
+```toml
+[logging]
+format = "json"
+file = "/var/log/snow-owl/tftp-audit.json"
+audit_enabled = true
+level = "info"
+```
+
+Create the log directory and start the server:
+
+```bash
+sudo mkdir -p /var/log/snow-owl
+sudo chown snow-owl:snow-owl /var/log/snow-owl
+sudo chmod 750 /var/log/snow-owl
+snow-owl-tftp --config /etc/snow-owl/tftp.toml
+```
+
+### Event Types
+
+**Server Lifecycle**: `server_started`, `server_stopped`, `config_reload`
+
+**File Access**: `read_request`, `transfer_started`, `transfer_completed`, `transfer_failed`
+
+**Security Violations**: `path_traversal_attempt`, `file_size_limit_exceeded`, `read_denied`, `write_request_denied`, `symlink_access_denied`
+
+**Multicast Sessions**: `multicast_session_created`, `multicast_client_joined`, `multicast_session_completed`
+
+### Example Audit Event
+
+```json
+{
+  "event_type": "transfer_completed",
+  "timestamp": "2026-01-18T10:05:25.789Z",
+  "hostname": "tftp-01",
+  "service": "snow-owl-tftp",
+  "severity": "info",
+  "client_addr": "192.168.1.100:54321",
+  "filename": "firmware.bin",
+  "bytes_transferred": 1048576,
+  "blocks_sent": 1024,
+  "duration_ms": 2333,
+  "throughput_bps": 449235,
+  "avg_block_time_ms": 2.278,
+  "correlation_id": "18f2a1b3c4d-192-168-1-100-54321-a3f2d8e1"
+}
+```
+
+### SIEM Platform Integration
+
+**Splunk**: Use Filebeat or HTTP Event Collector (HEC) for log ingestion
+
+**ELK Stack**: Configure Logstash with JSON codec and GeoIP enrichment
+
+**Datadog**: Use the Datadog agent with JSON log parsing
+
+**AWS CloudWatch**: Configure CloudWatch agent for log collection
+
+**Fluentd**: Use tail input with JSON parser
+
+### Security Alerting
+
+Monitor for these critical events:
+
+- **Path Traversal Attempts** (`path_traversal_attempt`) - Immediate alert and IP block
+- **Repeated Access Denials** (`read_denied` >5/min from same IP) - Security team alert
+- **Write Request Attempts** (`write_request_denied`) - Alert on read-only server
+- **File Size Limit Violations** (`file_size_limit_exceeded`) - Review limits
+- **Symlink Access Attempts** (`symlink_access_denied`) - Potential security probe
+
+### Performance Monitoring
+
+Track transfer performance metrics:
+
+```
+# Average throughput by file
+event_type=transfer_completed | stats avg(throughput_bps) by filename
+
+# Slow transfer detection (< 100 KB/s)
+event_type=transfer_completed throughput_bps:<102400
+
+# Transfer completion rates
+event_type=transfer_completed | stats count by filename
+```
+
+### Compliance
+
+The audit logs satisfy:
+
+- **NIST 800-53**: AU-2, AU-3, AU-6, AU-9, AU-12
+- **STIG**: V-222563, V-222564, V-222565
+- **PCI-DSS**: 10.2, 10.3, 10.5
+- **HIPAA**: 164.312(b) - Audit controls
+
+### Detailed Documentation
+
+For comprehensive SIEM integration guides, example queries, dashboard configurations, and troubleshooting, see:
+
+- [SIEM Integration Guide](crates/snow-owl-tftp/SIEM-INTEGRATION.md) - Complete integration documentation
+- [Security Compliance](crates/snow-owl-tftp/SECURITY-COMPLIANCE.md) - NIST 800-53 control mapping
 
 ## Standalone TFTP Server (snow-owl-tftp)
 
