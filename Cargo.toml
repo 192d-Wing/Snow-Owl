@@ -10,7 +10,7 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Snow-Owl Contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Wing/Snow-Owl"
@@ -26,25 +26,31 @@ pnet = "0.35"
 socket2 = "0.5"
 
 # HTTP server
-axum = "0.7"
+axum = "0.8"
 tower = "0.5"
-tower-http = "0.5"
+tower-http = "0.6"
 hyper = "1.4"
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 rustls = "0.23"
 rustls-pemfile = "2.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "0.9"
 
 # Database
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "migrate", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = [
+    "postgres",
+    "runtime-tokio-rustls",
+    "migrate",
+    "uuid",
+    "chrono",
+] }
 
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
