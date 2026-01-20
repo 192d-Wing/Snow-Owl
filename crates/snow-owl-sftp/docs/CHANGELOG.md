@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Connection Tracking Module (src/connection_tracker.rs)** - Per-user concurrent connection limits
+  - `ConnectionTracker` for tracking and limiting concurrent connections per user
+  - Configurable maximum connections per user (default: 10)
+  - Automatic cleanup when connections are terminated
+  - Statistics tracking for monitoring (active users, total connections)
+  - Integration with server authentication flow
+  - Connection registration on successful authentication
+  - Connection unregistration on session termination
+  - NIST 800-53: AC-10 (Concurrent Session Control), AC-12 (Session Termination)
+  - STIG: V-222601 (Session termination)
 - **IPv6 Network Support Requirement (Rule 2)** - Mandatory IPv6 support for all network code
   - All network code must support IPv6
   - IPv6 preferred by default when available
@@ -45,25 +55,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tempfile dev-dependency for testing
 
 ### Changed
-- **Server authentication** - Now includes rate limiting and brute force protection
+- **Server authentication and session management** - Now includes rate limiting, connection limits, and brute force protection
   - Replaced accept-all authentication with proper key verification
   - Added rate limiting per IP address
+  - Added concurrent connection limits per user
   - Automatic lockout after failed attempts
+  - Reject authentication when user exceeds max connections
+  - Automatic connection cleanup on session termination
   - Clear failed attempts counter on successful authentication
-  - Added audit logging for authentication events (AC-2, AU-2, AC-7)
-  - Integrated AuthorizedKeys and RateLimiter into SftpSessionHandler
+  - Added audit logging for authentication events (AC-2, AU-2, AC-7, AC-10, AC-12)
+  - Integrated AuthorizedKeys, RateLimiter, and ConnectionTracker into SftpSessionHandler
 - Reorganized documentation into docs/ folder for better structure
 - Updated all documentation references to use docs/ paths
 
 ### Security
-- **PRODUCTION READY: Authentication & Rate Limiting** - Server now properly validates SSH public keys with brute force protection
+- **PRODUCTION READY: Authentication, Rate Limiting & Connection Control** - Server now properly validates SSH public keys with brute force protection and session limits
 - Implemented AC-2 (Account Management) through authorized_keys
 - Implemented IA-2 (Identification and Authentication) with public key crypto
 - Implemented AC-7 (Unsuccessful Logon Attempts) with rate limiting and lockout
+- Implemented AC-10 (Concurrent Session Control) with per-user connection limits
+- Implemented AC-12 (Session Termination) with automatic cleanup
 - Implemented V-222611 (Certificate validation) for SSH keys
 - Implemented V-222578 (Replay-resistant authentication mechanisms)
-- Added AU-2 (Audit Events) logging for authentication attempts
+- Implemented V-222601 (Session termination) with connection tracking
+- Added AU-2 (Audit Events) logging for authentication attempts and connection events
 - Protection against brute force attacks with configurable limits
+- Protection against resource exhaustion with connection limits
 - Documented NIST 800-53 control requirements
 - Documented Application Security STIG compliance
 - Added security hardening guidelines

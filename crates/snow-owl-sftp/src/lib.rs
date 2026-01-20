@@ -20,6 +20,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod connection_tracker;
 pub mod error;
 pub mod protocol;
 pub mod rate_limit;
@@ -28,6 +29,7 @@ pub mod client;
 
 pub use auth::AuthorizedKeys;
 pub use config::Config;
+pub use connection_tracker::{ConnectionTracker, ConnectionTrackerConfig};
 pub use error::{Error, Result};
 pub use rate_limit::{RateLimitConfig, RateLimiter};
 pub use server::Server;

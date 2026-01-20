@@ -3,7 +3,10 @@
 //! This module provides an RFC-compliant SFTP server implementation
 //! built on top of the SSH protocol (RFC 4251-4254).
 
-use crate::{AuthorizedKeys, Config, Error, RateLimitConfig, RateLimiter, Result};
+use crate::{
+    AuthorizedKeys, Config, ConnectionTracker, ConnectionTrackerConfig, Error, RateLimitConfig,
+    RateLimiter, Result,
+};
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use russh::server::{Auth, Handler, Msg, Server as SshServer, Session};
@@ -66,12 +69,14 @@ impl Server {
 
 /// SSH/SFTP session handler
 ///
-/// NIST 800-53: AC-7 (Unsuccessful Logon Attempts), AC-12 (Session Termination)
-/// Implementation: Manages rate limiting and connection limits
+/// NIST 800-53: AC-7 (Unsuccessful Logon Attempts), AC-10 (Concurrent Session Control), AC-12 (Session Termination)
+/// STIG: V-222601 (Session termination)
+/// Implementation: Manages rate limiting and connection limits per user
 struct SftpHandler {
     config: Arc<Config>,
     clients: Arc<Mutex<HashMap<usize, SftpSession>>>,
     rate_limiter: Arc<RateLimiter>,
+    connection_tracker: Arc<ConnectionTracker>,
 }
 
 impl SftpHandler {
@@ -83,10 +88,16 @@ impl SftpHandler {
             lockout_duration_secs: config.lockout_duration_secs,
         };
 
+        // NIST 800-53: AC-10 - Initialize connection tracker
+        let connection_tracker_config = ConnectionTrackerConfig {
+            max_connections_per_user: config.max_connections_per_user,
+        };
+
         Self {
             config,
             clients: Arc::new(Mutex::new(HashMap::new())),
             rate_limiter: Arc::new(RateLimiter::new(rate_limit_config)),
+            connection_tracker: Arc::new(ConnectionTracker::new(connection_tracker_config)),
         }
     }
 }
@@ -112,20 +123,27 @@ impl SshServer for SftpHandler {
             session: Arc::new(Mutex::new(session)),
             authorized_keys: Arc::new(Mutex::new(auth_keys)),
             rate_limiter: self.rate_limiter.clone(),
+            connection_tracker: self.connection_tracker.clone(),
             peer_addr: peer_addr.map(|addr| addr.ip()),
+            username: Arc::new(Mutex::new(None)),
+            connection_id: Arc::new(Mutex::new(None)),
         }
     }
 }
 
 /// Per-connection session handler
 ///
-/// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication), AC-7 (Unsuccessful Logon Attempts)
-/// Implementation: Manages per-connection authentication and SFTP session with rate limiting
+/// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication), AC-7 (Unsuccessful Logon Attempts), AC-10 (Concurrent Session Control)
+/// STIG: V-222601 (Session termination)
+/// Implementation: Manages per-connection authentication and SFTP session with rate limiting and connection tracking
 struct SftpSessionHandler {
     session: Arc<Mutex<SftpSession>>,
     authorized_keys: Arc<Mutex<AuthorizedKeys>>,
     rate_limiter: Arc<RateLimiter>,
+    connection_tracker: Arc<ConnectionTracker>,
     peer_addr: Option<IpAddr>,
+    username: Arc<Mutex<Option<String>>>,
+    connection_id: Arc<Mutex<Option<usize>>>,
 }
 
 #[async_trait]
@@ -162,10 +180,11 @@ impl Handler for SftpSessionHandler {
         }
     }
 
-    // NIST 800-53: IA-2 (Identification and Authentication), AC-3 (Access Enforcement), AC-7 (Unsuccessful Logon Attempts)
+    // NIST 800-53: IA-2 (Identification and Authentication), AC-3 (Access Enforcement), AC-7 (Unsuccessful Logon Attempts), AC-10 (Concurrent Session Control)
     // STIG: V-222611 - The application must validate certificates
     // STIG: V-222578 - Implement replay-resistant authentication mechanisms
-    // Implementation: Verifies public key against authorized_keys file with rate limiting
+    // STIG: V-222601 - Session termination and concurrent session control
+    // Implementation: Verifies public key against authorized_keys file with rate limiting and connection limits
     async fn auth_publickey(
         &mut self,
         user: &str,
@@ -189,6 +208,18 @@ impl Handler for SftpSessionHandler {
         let auth_keys = self.authorized_keys.lock().await;
 
         if auth_keys.is_authorized(public_key) {
+            // NIST 800-53: AC-10 - Check concurrent session limit before accepting
+            if !self.connection_tracker.can_connect(user).await {
+                warn!(
+                    "User '{}' exceeded maximum concurrent connections, rejecting authentication",
+                    user
+                );
+                // NIST 800-53: AU-2 (Audit Events) - Log connection limit rejection
+                return Ok(Auth::Reject {
+                    proceed_with_methods: None, // Reject due to connection limit
+                });
+            }
+
             info!("Public key authentication succeeded for user: {}", user);
             // NIST 800-53: AU-2 (Audit Events) - Log successful authentication
 
@@ -197,7 +228,28 @@ impl Handler for SftpSessionHandler {
                 self.rate_limiter.record_success(ip).await;
             }
 
-            Ok(Auth::Accept)
+            // NIST 800-53: AC-10 - Register connection for user
+            if let Some(conn_id) = self
+                .connection_tracker
+                .register_connection(user.to_string())
+                .await
+            {
+                let mut username = self.username.lock().await;
+                *username = Some(user.to_string());
+
+                let mut connection_id = self.connection_id.lock().await;
+                *connection_id = Some(conn_id);
+
+                Ok(Auth::Accept)
+            } else {
+                warn!(
+                    "Failed to register connection for user '{}' (connection limit reached)",
+                    user
+                );
+                Ok(Auth::Reject {
+                    proceed_with_methods: None,
+                })
+            }
         } else {
             warn!("Public key authentication failed for user: {}", user);
             // NIST 800-53: AU-2 (Audit Events) - Log failed authentication
@@ -233,6 +285,27 @@ impl Handler for SftpSessionHandler {
 
         if !response.is_empty() {
             session.data(channel, CryptoVec::from_slice(&response)).await?;
+        }
+
+        Ok(())
+    }
+
+    // NIST 800-53: AC-12 (Session Termination), AC-10 (Concurrent Session Control)
+    // STIG: V-222601 - Session termination
+    // Implementation: Clean up connection tracking on session end
+    async fn finished(&mut self, _session: &mut Session) -> Result<()> {
+        // Unregister connection when session finishes
+        let username = self.username.lock().await;
+        let connection_id = self.connection_id.lock().await;
+
+        if let (Some(user), Some(conn_id)) = (username.as_ref(), *connection_id) {
+            info!(
+                "Session finished for user '{}', unregistering connection {}",
+                user, conn_id
+            );
+            self.connection_tracker
+                .unregister_connection(user, conn_id)
+                .await;
         }
 
         Ok(())

@@ -41,17 +41,17 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 **Goal**: Make the server production-ready with reliable core features
 **Timeline**: 2-3 weeks
-**Status**: In Progress (85%)
+**Status**: In Progress (90%)
 
 ### 1.1 Authentication & Security
 - [x] Implement authorized_keys file parsing
 - [x] Add proper public key verification
 - [x] Add rate limiting for authentication attempts
-- [ ] Implement connection limits per user (tracking implemented, enforcement pending)
+- [x] Implement connection limits per user
 - [ ] Implement user/group permission mapping
 - [x] Add audit logging for authentication events
 
-**Success Criteria**: Server can authenticate real users with SSH keys ✅ **ACHIEVED**
+**Success Criteria**: Server can authenticate real users with SSH keys and enforce limits ✅ **ACHIEVED**
 
 **Completed**:
 - AuthorizedKeys module with OpenSSH format parsing
@@ -60,12 +60,15 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - **Per-IP rate limiting (5 attempts / 5 min window)**
 - **Automatic lockout (15 min after max attempts)**
 - **Clear attempts counter on successful auth**
-- NIST 800-53: AC-2, IA-2, AC-7 implementation
-- STIG: V-222611, V-222578 compliance
-- Comprehensive authentication audit logging
+- **ConnectionTracker module for concurrent session limits**
+- **Per-user connection limits (10 concurrent connections default)**
+- **Automatic connection cleanup on session termination**
+- **Reject authentication when connection limit exceeded**
+- NIST 800-53: AC-2, IA-2, AC-7, AC-10, AC-12 implementation
+- STIG: V-222611, V-222578, V-222601 compliance
+- Comprehensive authentication and session audit logging
 
 **Remaining**:
-- Connection limits per user (enforcement in session handler)
 - User/group permission mapping (deferred to Phase 2.4)
 
 ### 1.2 Complete Client Implementation
