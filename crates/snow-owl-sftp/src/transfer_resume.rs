@@ -303,7 +303,7 @@ impl Default for TransferResumeManager {
 /// NIST 800-53: SI-7 (Software, Firmware, and Information Integrity)
 /// STIG: V-222596 (Data Integrity)
 pub struct TransferChecksum {
-    algorithm: ChecksumAlgorithm,
+    _algorithm: ChecksumAlgorithm,
 }
 
 /// Checksum algorithm
@@ -320,7 +320,7 @@ pub enum ChecksumAlgorithm {
 impl TransferChecksum {
     /// Create a new checksum calculator
     pub fn new(algorithm: ChecksumAlgorithm) -> Self {
-        Self { algorithm }
+        Self { _algorithm: algorithm }
     }
 
     /// Calculate checksum for a file (placeholder - requires crypto crate)

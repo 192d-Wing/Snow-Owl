@@ -7,11 +7,10 @@ use crate::{
     cnsa, AuthorizedKeys, Config, ConnectionTracker, ConnectionTrackerConfig, Error,
     RateLimitConfig, RateLimiter, Result,
 };
-use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use russh::server::{Auth, Handler, Msg, Server as SshServer, Session};
-use russh::{Channel, ChannelId, CryptoVec};
-use russh_keys::key;
+use russh::{Channel, ChannelId, CryptoVec, MethodKind, MethodSet};
+use russh::keys::{PrivateKey, PublicKey};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -59,10 +58,10 @@ impl Server {
 
         // CNSA 2.0: Configure only approved algorithms
         ssh_config.preferred = russh::Preferred {
-            kex: cnsa::CNSA_KEX_ALGORITHMS,
-            key: cnsa::CNSA_HOST_KEY_ALGORITHMS,
-            cipher: cnsa::CNSA_CIPHERS,
-            mac: cnsa::CNSA_MAC_ALGORITHMS,
+            kex: std::borrow::Cow::Borrowed(cnsa::CNSA_KEX_ALGORITHMS),
+            key: std::borrow::Cow::Borrowed(cnsa::CNSA_HOST_KEY_ALGORITHMS),
+            cipher: std::borrow::Cow::Borrowed(cnsa::CNSA_CIPHERS),
+            mac: std::borrow::Cow::Borrowed(cnsa::CNSA_MAC_ALGORITHMS),
             ..Default::default()
         };
 
@@ -87,13 +86,32 @@ impl Server {
         info!("Starting SFTP server on {}", addr);
 
         let config = Arc::new(self.ssh_config);
-        let server_config = self.config.clone();
+        let mut handler = SftpHandler::new(self.config.clone());
 
-        russh::server::run(config, &addr, SftpHandler::new(server_config))
+        // Create TCP listener
+        let socket = tokio::net::TcpListener::bind(&addr)
             .await
-            .map_err(|e| Error::Connection(format!("Server error: {}", e)))?;
+            .map_err(|e| Error::Connection(format!("Failed to bind to {}: {}", addr, e)))?;
 
-        Ok(())
+        info!("SFTP server listening on {}", addr);
+
+        // Accept connections loop
+        loop {
+            let (stream, peer_addr) = socket
+                .accept()
+                .await
+                .map_err(|e| Error::Connection(format!("Failed to accept connection: {}", e)))?;
+
+            let config = config.clone();
+            let session_handler = handler.new_client(Some(peer_addr));
+
+            // Spawn a task to handle this connection
+            tokio::spawn(async move {
+                if let Err(e) = russh::server::run_stream(config, stream, session_handler).await {
+                    error!("Connection error: {}", e);
+                }
+            });
+        }
     }
 }
 
@@ -104,7 +122,7 @@ impl Server {
 /// Implementation: Manages rate limiting and connection limits per user
 struct SftpHandler {
     config: Arc<Config>,
-    clients: Arc<Mutex<HashMap<usize, SftpSession>>>,
+    _clients: Arc<Mutex<HashMap<usize, SftpSession>>>,
     rate_limiter: Arc<RateLimiter>,
     connection_tracker: Arc<ConnectionTracker>,
 }
@@ -125,18 +143,17 @@ impl SftpHandler {
 
         Self {
             config,
-            clients: Arc::new(Mutex::new(HashMap::new())),
+            _clients: Arc::new(Mutex::new(HashMap::new())),
             rate_limiter: Arc::new(RateLimiter::new(rate_limit_config)),
             connection_tracker: Arc::new(ConnectionTracker::new(connection_tracker_config)),
         }
     }
 }
 
-#[async_trait]
 impl SshServer for SftpHandler {
     type Handler = SftpSessionHandler;
 
-    async fn new_client(&mut self, peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
+    fn new_client(&mut self, peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
         let session = SftpSession::new(self.config.clone());
 
         // NIST 800-53: AC-2 (Account Management)
@@ -176,7 +193,6 @@ struct SftpSessionHandler {
     connection_id: Arc<Mutex<Option<usize>>>,
 }
 
-#[async_trait]
 impl Handler for SftpSessionHandler {
     type Error = Error;
 
@@ -201,11 +217,11 @@ impl Handler for SftpSessionHandler {
 
         if name == "sftp" {
             // Send success response
-            session.channel_success(channel_id).await?;
+            session.channel_success(channel_id)?;
             Ok(())
         } else {
             warn!("Unsupported subsystem: {}", name);
-            session.channel_failure(channel_id).await?;
+            session.channel_failure(channel_id)?;
             Err(Error::Protocol(format!("Unsupported subsystem: {}", name)))
         }
     }
@@ -218,7 +234,7 @@ impl Handler for SftpSessionHandler {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        public_key: &key::PublicKey,
+        public_key: &PublicKey,
     ) -> Result<Auth> {
         // NIST 800-53: AC-7 - Check rate limit before attempting authentication
         if let Some(ip) = self.peer_addr {
@@ -230,6 +246,7 @@ impl Handler for SftpSessionHandler {
                 // NIST 800-53: AU-2 (Audit Events) - Log rate limited attempt
                 return Ok(Auth::Reject {
                     proceed_with_methods: None, // No other methods allowed when rate limited
+                    partial_success: false,
                 });
             }
         }
@@ -247,6 +264,7 @@ impl Handler for SftpSessionHandler {
                 // NIST 800-53: AU-2 (Audit Events) - Log connection limit rejection
                 return Ok(Auth::Reject {
                     proceed_with_methods: None, // Reject due to connection limit
+                    partial_success: false,
                 });
             }
 
@@ -278,6 +296,7 @@ impl Handler for SftpSessionHandler {
                 );
                 Ok(Auth::Reject {
                     proceed_with_methods: None,
+                    partial_success: false,
                 })
             }
         } else {
@@ -290,7 +309,12 @@ impl Handler for SftpSessionHandler {
             }
 
             Ok(Auth::Reject {
-                proceed_with_methods: Some(russh::MethodSet::PUBLICKEY),
+                proceed_with_methods: Some({
+                    let mut methods = MethodSet::empty();
+                    methods.push(MethodKind::PublicKey);
+                    methods
+                }),
+                partial_success: false,
             })
         }
     }
@@ -300,7 +324,12 @@ impl Handler for SftpSessionHandler {
         // In production, implement proper password verification
         warn!("Password authentication rejected");
         Ok(Auth::Reject {
-            proceed_with_methods: Some(russh::MethodSet::PUBLICKEY),
+            proceed_with_methods: Some({
+                    let mut methods = MethodSet::empty();
+                    methods.push(MethodKind::PublicKey);
+                    methods
+                }),
+            partial_success: false,
         })
     }
 
@@ -337,7 +366,7 @@ impl Handler for SftpSessionHandler {
 
         if !response.is_empty() {
             // NIST 800-53: SC-8, SI-11 - Handle channel write errors (connection drops)
-            if let Err(e) = session.data(channel, CryptoVec::from_slice(&response)).await {
+            if let Err(e) = session.data(channel, CryptoVec::from_slice(&response)) {
                 error!("Failed to send response, channel may be closed: {}", e);
                 return Err(Error::channel_closed(format!(
                     "Failed to send response: {}",
@@ -352,6 +381,11 @@ impl Handler for SftpSessionHandler {
     // NIST 800-53: AC-12 (Session Termination), AC-10 (Concurrent Session Control)
     // STIG: V-222601 - Session termination
     // Implementation: Clean up connection tracking on session end
+    //
+    // Note: The `finished` method is not part of the Handler trait in russh 0.56.
+    // Connection cleanup is handled via the Drop impl for SftpSession instead.
+    // If needed, this could be called explicitly or moved to channel_close.
+    /*
     async fn finished(&mut self, _session: &mut Session) -> Result<()> {
         // Unregister connection when session finishes
         let username = self.username.lock().await;
@@ -369,6 +403,7 @@ impl Handler for SftpSessionHandler {
 
         Ok(())
     }
+    */
 }
 
 /// SFTP session state
@@ -1527,6 +1562,7 @@ impl SftpSession {
                 let path_c = CString::new(path.as_os_str().as_bytes())
                     .map_err(|_| Error::InvalidPath("Path contains null byte".into()))?;
 
+                #[allow(unsafe_code)]
                 unsafe {
                     if libc::chown(path_c.as_ptr(), new_uid, new_gid) != 0 {
                         let err = std::io::Error::last_os_error();
@@ -1683,15 +1719,17 @@ fn metadata_to_attrs(metadata: &std::fs::Metadata) -> FileAttrs {
     }
 }
 
-async fn load_host_key(path: &Path) -> Result<key::KeyPair> {
+async fn load_host_key(path: &Path) -> Result<PrivateKey> {
     // For development, generate a key if it doesn't exist
     if !path.exists() {
-        warn!("Host key not found, generating temporary key");
-        return Ok(key::KeyPair::generate_ed25519()
-            .ok_or_else(|| Error::Config("Failed to generate host key".into()))?);
+        return Err(Error::Config(format!(
+            "Host key not found at {:?}. Please generate one with: ssh-keygen -t ed25519 -f {} -N \"\"",
+            path,
+            path.display()
+        )));
     }
 
-    let key_data = fs::read_to_string(path).await?;
-    russh_keys::decode_secret_key(&key_data, None)
+    // Load the key from file (blocking I/O, but only happens at startup)
+    russh::keys::load_secret_key(path, None)
         .map_err(|e| Error::Config(format!("Failed to load host key: {}", e)))
 }

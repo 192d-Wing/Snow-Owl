@@ -6,7 +6,7 @@
 //! The SFTP protocol runs over the SSH connection protocol (RFC 4254),
 //! using the "sftp" subsystem.
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 
 /// SFTP Protocol Version
 pub const SFTP_VERSION: u32 = 3;
@@ -146,33 +146,45 @@ impl From<StatusCode> for u32 {
 pub struct OpenFlags(pub u32);
 
 impl OpenFlags {
+    /// Open for reading
     pub const READ: u32 = 0x00000001;
+    /// Open for writing
     pub const WRITE: u32 = 0x00000002;
+    /// Append to end of file
     pub const APPEND: u32 = 0x00000004;
+    /// Create file if it doesn't exist
     pub const CREAT: u32 = 0x00000008;
+    /// Truncate file to zero length
     pub const TRUNC: u32 = 0x00000010;
+    /// Fail if file already exists (with CREAT)
     pub const EXCL: u32 = 0x00000020;
 
+    /// Check if READ flag is set
     pub fn has_read(&self) -> bool {
         self.0 & Self::READ != 0
     }
 
+    /// Check if WRITE flag is set
     pub fn has_write(&self) -> bool {
         self.0 & Self::WRITE != 0
     }
 
+    /// Check if APPEND flag is set
     pub fn has_append(&self) -> bool {
         self.0 & Self::APPEND != 0
     }
 
+    /// Check if CREAT flag is set
     pub fn has_creat(&self) -> bool {
         self.0 & Self::CREAT != 0
     }
 
+    /// Check if TRUNC flag is set
     pub fn has_trunc(&self) -> bool {
         self.0 & Self::TRUNC != 0
     }
 
+    /// Check if EXCL flag is set
     pub fn has_excl(&self) -> bool {
         self.0 & Self::EXCL != 0
     }
@@ -181,11 +193,17 @@ impl OpenFlags {
 /// File attributes (as defined in SFTP spec)
 #[derive(Debug, Clone, Default)]
 pub struct FileAttrs {
+    /// File size in bytes
     pub size: Option<u64>,
+    /// User ID (Unix)
     pub uid: Option<u32>,
+    /// Group ID (Unix)
     pub gid: Option<u32>,
+    /// File permissions (Unix mode bits)
     pub permissions: Option<u32>,
+    /// Access time (Unix timestamp)
     pub atime: Option<u32>,
+    /// Modification time (Unix timestamp)
     pub mtime: Option<u32>,
 }
 

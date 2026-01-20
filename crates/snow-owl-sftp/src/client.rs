@@ -5,18 +5,17 @@
 //! Implementation: RFC-compliant SFTP client with SSH authentication
 
 use crate::{cnsa, Error, Result};
-use async_trait::async_trait;
-use bytes::{BufMut, BytesMut};
-use russh::client::{self, Handle, Handler, Msg};
+use bytes::{Buf, BufMut, BytesMut};
+use russh::client::{self, Handle, Msg};
 use russh::{Channel, ChannelMsg};
-use russh_keys::key;
+use russh::keys::{PrivateKey, PrivateKeyWithHashAlg, PublicKey};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::protocol::{codec, FileAttrs, MessageType, OpenFlags, StatusCode, SFTP_VERSION};
 
@@ -29,7 +28,7 @@ pub struct Client {
     session: Arc<Mutex<Option<Handle<ClientHandler>>>>,
     channel: Arc<Mutex<Option<Channel<Msg>>>>,
     next_request_id: Arc<Mutex<u32>>,
-    responses: Arc<Mutex<HashMap<u32, Vec<u8>>>>,
+    _responses: Arc<Mutex<HashMap<u32, Vec<u8>>>>,
 }
 
 impl Client {
@@ -70,10 +69,10 @@ impl Client {
         // NSA CNSA 2.0: Configure only approved cryptographic algorithms
         let mut config = russh::client::Config::default();
         config.preferred = russh::Preferred {
-            kex: cnsa::CNSA_KEX_ALGORITHMS,
-            key: cnsa::CNSA_PUBLIC_KEY_ALGORITHMS,
-            cipher: cnsa::CNSA_CIPHERS,
-            mac: cnsa::CNSA_MAC_ALGORITHMS,
+            kex: std::borrow::Cow::Borrowed(cnsa::CNSA_KEX_ALGORITHMS),
+            key: std::borrow::Cow::Borrowed(cnsa::CNSA_PUBLIC_KEY_ALGORITHMS),
+            cipher: std::borrow::Cow::Borrowed(cnsa::CNSA_CIPHERS),
+            mac: std::borrow::Cow::Borrowed(cnsa::CNSA_MAC_ALGORITHMS),
             ..Default::default()
         };
 
@@ -96,12 +95,13 @@ impl Client {
         .map_err(|e| Error::Connection(format!("SSH connection failed: {}", e)))?;
 
         // NIST 800-53: IA-2 (Identification and Authentication) - Authenticate with public key
+        let key_with_alg = PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
         let auth_result = session
-            .authenticate_publickey(username, Arc::new(key_pair))
+            .authenticate_publickey(username, key_with_alg)
             .await
             .map_err(|e| Error::Authentication(format!("Authentication failed: {}", e)))?;
 
-        if !auth_result {
+        if !auth_result.success() {
             return Err(Error::Authentication(
                 "Public key authentication failed".into(),
             ));
@@ -125,7 +125,7 @@ impl Client {
             session: Arc::new(Mutex::new(Some(session))),
             channel: Arc::new(Mutex::new(Some(channel))),
             next_request_id: Arc::new(Mutex::new(1)),
-            responses: Arc::new(Mutex::new(HashMap::new())),
+            _responses: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Initialize SFTP protocol
@@ -205,7 +205,7 @@ impl Client {
         let handle = self
             .open(
                 remote_path,
-                OpenFlags::WRITE | OpenFlags::CREAT | OpenFlags::TRUNC,
+                OpenFlags(OpenFlags::WRITE | OpenFlags::CREAT | OpenFlags::TRUNC),
             )
             .await?;
 
@@ -244,7 +244,7 @@ impl Client {
         info!("Downloading {} to {:?}", remote_path, local_path);
 
         // Open remote file for reading
-        let handle = self.open(remote_path, OpenFlags::READ).await?;
+        let handle = self.open(remote_path, OpenFlags(OpenFlags::READ)).await?;
 
         // Get file size
         let attrs = self.fstat(&handle).await?;
@@ -343,7 +343,7 @@ impl Client {
         buf.put_u8(MessageType::Mkdir as u8);
         buf.put_u32(request_id);
         codec::put_string(&mut buf, path);
-        FileAttrs::default().encode(&mut buf);
+        buf.extend_from_slice(&FileAttrs::default().encode());
 
         self.send_packet(&buf).await?;
         self.check_status(request_id).await
@@ -472,7 +472,7 @@ impl Client {
         buf.put_u32(request_id);
         codec::put_string(&mut buf, path);
         buf.put_u32(flags.0);
-        FileAttrs::default().encode(&mut buf);
+        buf.extend_from_slice(&FileAttrs::default().encode());
 
         self.send_packet(&buf).await?;
 
@@ -559,8 +559,8 @@ impl Client {
             MessageType::Status => {
                 // EOF is indicated by STATUS with EOF code
                 let mut buf = &response[1..];
-                let _request_id = codec::get_u32(&mut buf)?;
-                let code = codec::get_u32(&mut buf)?;
+                let _request_id = buf.get_u32();
+                let code = buf.get_u32();
 
                 if code == StatusCode::Eof as u32 {
                     Ok(None) // EOF
@@ -600,8 +600,10 @@ impl Client {
         packet.put_u32(data.len() as u32);
         packet.extend_from_slice(data);
 
+        // Convert BytesMut to slice for AsyncRead compatibility
+        let packet_bytes: &[u8] = &packet;
         channel
-            .data(&packet)
+            .data(packet_bytes)
             .await
             .map_err(|e| Error::Connection(format!("Failed to send packet: {}", e)))?;
 
@@ -648,7 +650,7 @@ impl Client {
         }
     }
 
-    async fn receive_response(&self, request_id: u32) -> Result<Vec<u8>> {
+    async fn receive_response(&self, _request_id: u32) -> Result<Vec<u8>> {
         // In a real implementation, we'd match request IDs
         // For simplicity, we'll just receive the next packet
         self.receive_packet().await
@@ -671,8 +673,8 @@ impl Client {
         }
 
         let mut buf = &response[1..];
-        let _resp_id = codec::get_u32(&mut buf)?;
-        let code = codec::get_u32(&mut buf)?;
+        let _resp_id = buf.get_u32();
+        let code = buf.get_u32();
         let message = codec::get_string(&mut buf).unwrap_or_default();
 
         if code == StatusCode::Ok as u32 {
@@ -697,7 +699,7 @@ impl Client {
         }
 
         let mut buf = &response[1..];
-        let _request_id = codec::get_u32(&mut buf)?;
+        let _request_id = buf.get_u32();
         let handle = codec::get_bytes(&mut buf)?;
 
         Ok(handle.to_vec())
@@ -713,15 +715,15 @@ impl Client {
         match msg_type {
             MessageType::Data => {
                 let mut buf = &response[1..];
-                let _request_id = codec::get_u32(&mut buf)?;
+                let _request_id = buf.get_u32();
                 let data = codec::get_bytes(&mut buf)?;
                 Ok(data.to_vec())
             }
             MessageType::Status => {
                 // Check for EOF
                 let mut buf = &response[1..];
-                let _request_id = codec::get_u32(&mut buf)?;
-                let code = codec::get_u32(&mut buf)?;
+                let _request_id = buf.get_u32();
+                let code = buf.get_u32();
 
                 if code == StatusCode::Eof as u32 {
                     Ok(Vec::new()) // EOF
@@ -752,7 +754,7 @@ impl Client {
         }
 
         let mut buf = &response[1..];
-        let _request_id = codec::get_u32(&mut buf)?;
+        let _request_id = buf.get_u32();
         let attrs = FileAttrs::decode(&mut buf)?;
 
         Ok(attrs)
@@ -773,8 +775,8 @@ impl Client {
         }
 
         let mut buf = &response[1..];
-        let _request_id = codec::get_u32(&mut buf)?;
-        let count = codec::get_u32(&mut buf)? as usize;
+        let _request_id = buf.get_u32();
+        let count = buf.get_u32() as usize;
 
         let mut entries = Vec::with_capacity(count);
 
@@ -806,13 +808,12 @@ impl ClientHandler {
     }
 }
 
-#[async_trait]
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &key::PublicKey,
+        _server_public_key: &PublicKey,
     ) -> std::result::Result<bool, Self::Error> {
         // NIST 800-53: IA-5 (Authenticator Management)
         // TODO: Implement proper server key verification
@@ -826,13 +827,7 @@ impl client::Handler for ClientHandler {
 ///
 /// # NIST 800-53: IA-5 (Authenticator Management), SC-13 (Cryptographic Protection)
 /// # Implementation: Loads private key for authentication
-async fn load_private_key(path: &Path) -> Result<key::KeyPair> {
-    let key_data = fs::read_to_string(path)
-        .await
-        .map_err(|e| Error::Io(e))?;
-
-    let key_pair = russh_keys::decode_secret_key(&key_data, None)
-        .map_err(|e| Error::Authentication(format!("Failed to load private key: {}", e)))?;
-
-    Ok(key_pair)
+async fn load_private_key(path: &Path) -> Result<PrivateKey> {
+    russh::keys::load_secret_key(path, None)
+        .map_err(|e| Error::Authentication(format!("Failed to load private key: {}", e)))
 }

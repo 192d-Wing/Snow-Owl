@@ -9,7 +9,7 @@
 use clap::Parser;
 use snow_owl_sftp::{Config, LogFormat, Server};
 use std::path::PathBuf;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -53,7 +53,7 @@ async fn main() {
     let args = Args::parse();
 
     // Load or create configuration
-    let mut config = if let Some(config_path) = args.config {
+    let config = if let Some(config_path) = args.config {
         match Config::from_file(&config_path) {
             Ok(cfg) => cfg,
             Err(e) => {
@@ -94,26 +94,26 @@ async fn main() {
     // NIST 800-53 AU-9: Protection of Audit Information
     // NIST 800-53 AU-12: Audit Generation
     // STIG V-222648: Audit records must be generated
-    let _log_guard = if let Some(ref log_file) = config.logging.file {
+    let _log_guard = if let Some(log_file) = config.logging.file.clone() {
         // Create log directory if it doesn't exist
+        let mut use_file_logging = true;
         if let Some(parent) = log_file.parent() {
             if !parent.exists() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
                     eprintln!("Warning: Failed to create log directory: {}", e);
                     eprintln!("Falling back to stderr logging");
-                    config.logging.file = None;
+                    use_file_logging = false;
                 }
             }
         }
 
-        if config.logging.file.is_some() {
+        if use_file_logging {
             let file_appender = tracing_appender::rolling::daily(
-                log_file.parent().expect("log file must have parent directory"),
+                log_file.parent().unwrap_or_else(|| std::path::Path::new(".")),
                 log_file
                     .file_name()
-                    .expect("log file must have filename")
-                    .to_string_lossy()
-                    .as_ref(),
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "sftp-server.log".to_string()),
             );
             let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 

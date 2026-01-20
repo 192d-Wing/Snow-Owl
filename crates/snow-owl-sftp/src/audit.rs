@@ -18,64 +18,102 @@ use tracing::{info, warn};
 pub enum AuditEvent {
     /// Connection established
     ConnectionEstablished {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
     },
     /// Connection closed
     ConnectionClosed {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Authenticated username
         username: Option<String>,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
+        /// Session duration in seconds
         duration_secs: i64,
     },
     /// Authentication attempt
     AuthAttempt {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Username attempted
         username: String,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
+        /// Whether authentication succeeded
         success: bool,
+        /// Failure reason if applicable
         reason: Option<String>,
     },
     /// File operation
     FileOperation {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Authenticated username
         username: Option<String>,
+        /// Operation type (read, write, etc.)
         operation: String,
+        /// File path
         path: String,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
+        /// Whether operation succeeded
         success: bool,
+        /// Bytes transferred if applicable
         bytes_transferred: Option<u64>,
+        /// Error message if failed
         error: Option<String>,
     },
     /// Directory operation
     DirectoryOperation {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Authenticated username
         username: Option<String>,
+        /// Operation type (mkdir, rmdir, etc.)
         operation: String,
+        /// Directory path
         path: String,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
+        /// Whether operation succeeded
         success: bool,
+        /// Error message if failed
         error: Option<String>,
     },
     /// Security event
     SecurityEvent {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Authenticated username
         username: Option<String>,
+        /// Security event type
         event: String,
+        /// Event details
         details: String,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
     },
     /// Rate limit triggered
     RateLimitTriggered {
+        /// Client IP address
         client_ip: Option<IpAddr>,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
+        /// Lockout duration in seconds
         duration_secs: u64,
     },
     /// Connection limit reached
     ConnectionLimitReached {
+        /// Username that hit the limit
         username: String,
+        /// Current connection count
         current_connections: usize,
+        /// Maximum allowed connections
         max_connections: usize,
+        /// Event timestamp
         timestamp: DateTime<Utc>,
     },
 }
@@ -253,10 +291,15 @@ impl AuditEvent {
 /// NIST 800-53: AU-3 (Content of Audit Records)
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
+    /// Unique session identifier
     pub session_id: String,
+    /// Client IP address
     pub client_ip: Option<IpAddr>,
+    /// Authenticated username
     pub username: Option<String>,
+    /// Session start time
     pub start_time: DateTime<Utc>,
+    /// Time of last activity
     pub last_activity: DateTime<Utc>,
 }
 

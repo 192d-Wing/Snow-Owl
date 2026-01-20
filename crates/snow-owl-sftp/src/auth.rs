@@ -5,7 +5,7 @@
 //! Implementation: Provides authorized_keys parsing and public key verification
 
 use crate::{Error, Result};
-use russh_keys::key::PublicKey;
+use russh::keys::{HashAlg, PublicKey};
 use std::fs;
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -151,8 +151,8 @@ impl AuthorizedKeys {
         // Combine for parsing
         let key_string = format!("{} {}", key_type, key_data);
 
-        // Parse using russh_keys
-        russh_keys::parse_public_key_base64(&key_string)
+        // Parse using russh::keys
+        russh::keys::parse_public_key_base64(&key_string)
             .map_err(|e| Error::Config(format!("Failed to parse public key: {}", e)))
     }
 
@@ -196,8 +196,8 @@ impl AuthorizedKeys {
     /// # NIST 800-53: IA-2 (Identification and Authentication)
     /// # Implementation: Cryptographic comparison of public keys
     fn keys_match(&self, key1: &PublicKey, key2: &PublicKey) -> bool {
-        // Compare key fingerprints
-        key1.fingerprint() == key2.fingerprint()
+        // Compare key fingerprints using SHA-256
+        key1.fingerprint(HashAlg::Sha256) == key2.fingerprint(HashAlg::Sha256)
     }
 
     /// Reload authorized keys from file

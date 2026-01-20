@@ -38,11 +38,14 @@ chrono = { version = "0.4", features = ["serde"] }
 # Cryptography for SSH/SFTP (RFC 4251-4254)
 # Using russh which implements SSH protocol
 # NSA CNSA 2.0: Disable RSA, use only EC algorithms (P-384, Ed25519)
-russh = { version = "0.56", default-features = false, features = ["flate2", "aws-lc-rs"] }
+russh = { version = "0.56", default-features = false, features = ["flate2", "aws-lc-rs", "async-trait"] }
 russh-keys = "0.49"
 
 # Additional dependencies for SFTP
 async-trait = "0.1"
+rand = "0.8"
+libc = "0.2"
+tracing-appender = "0.2"
 
 [dev-dependencies]
 tempfile = "3.8"

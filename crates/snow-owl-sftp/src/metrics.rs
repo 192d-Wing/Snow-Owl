@@ -77,58 +77,85 @@ struct MetricsInner {
 /// Implementation: Serializable metrics snapshot for reporting
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsSnapshot {
-    // Timestamp of snapshot
+    /// Timestamp when snapshot was taken
     pub timestamp: DateTime<Utc>,
+    /// Server uptime in seconds
     pub uptime_seconds: i64,
 
-    // Connection metrics
+    /// Total connections since server start
     pub total_connections: u64,
+    /// Currently active connections
     pub active_connections: usize,
+    /// Failed connection attempts
     pub failed_connections: u64,
+    /// Rejected connections (rate limited, etc.)
     pub rejected_connections: u64,
 
-    // Authentication metrics
+    /// Total authentication attempts
     pub auth_attempts: u64,
+    /// Successful authentications
     pub auth_successes: u64,
+    /// Failed authentications
     pub auth_failures: u64,
+    /// Attempts blocked by rate limiting
     pub rate_limited_attempts: u64,
+    /// Authentication success rate (0.0-1.0)
     pub auth_success_rate: f64,
 
-    // File operation metrics
+    /// File open operations
     pub file_opens: u64,
+    /// File read operations
     pub file_reads: u64,
+    /// File write operations
     pub file_writes: u64,
+    /// File close operations
     pub file_closes: u64,
+    /// File remove operations
     pub file_removes: u64,
+    /// File rename operations
     pub file_renames: u64,
 
-    // Directory operation metrics
+    /// Directory open operations
     pub dir_opens: u64,
+    /// Directory read operations
     pub dir_reads: u64,
+    /// Directory create operations
     pub dir_creates: u64,
+    /// Directory remove operations
     pub dir_removes: u64,
 
-    // Advanced operation metrics
+    /// Stat (file info) operations
     pub stat_operations: u64,
+    /// Set stat (chmod, etc.) operations
     pub setstat_operations: u64,
+    /// Symlink create operations
     pub symlink_operations: u64,
+    /// Symlink read operations
     pub readlink_operations: u64,
 
-    // Data transfer metrics
+    /// Total bytes read from files
     pub bytes_read: u64,
+    /// Total bytes written to files
     pub bytes_written: u64,
+    /// Total bytes transferred
     pub total_bytes: u64,
 
-    // Error metrics
+    /// Protocol parsing errors
     pub protocol_errors: u64,
+    /// Permission denied errors
     pub permission_denied: u64,
+    /// File not found errors
     pub file_not_found: u64,
+    /// I/O errors
     pub io_errors: u64,
+    /// Operation timeout errors
     pub timeout_errors: u64,
+    /// Total errors
     pub total_errors: u64,
 
-    // Performance metrics
+    /// Total operations performed
     pub total_operations: u64,
+    /// Operations per second rate
     pub operations_per_second: f64,
 }
 

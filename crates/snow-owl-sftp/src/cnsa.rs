@@ -67,10 +67,14 @@
 //! - RFC 5656: Elliptic Curve Algorithm Integration in SSH
 //! - RFC 8709: Ed25519 and Ed448 Public Key Algorithms for SSH
 
-use russh::cipher::Name as CipherName;
-use russh::kex::Name as KexName;
-use russh::key::Name as KeyName;
-use russh::mac::Name as MacName;
+use russh::cipher;
+use russh::kex;
+use russh::mac;
+use russh::keys::ssh_key::{Algorithm, EcdsaCurve};
+
+type KexName = kex::Name;
+type CipherName = cipher::Name;
+type MacName = mac::Name;
 
 /// CNSA 2.0 compliant key exchange algorithms
 ///
@@ -79,10 +83,10 @@ use russh::mac::Name as MacName;
 /// 2. X25519/Curve25519 (acceptable for non-classified, modern and fast)
 pub const CNSA_KEX_ALGORITHMS: &[KexName] = &[
     // Primary CNSA 2.0 algorithm
-    KexName::EcdhSha2Nistp384,
+    kex::ECDH_SHA2_NISTP384,
 
     // Acceptable for non-classified use (modern, fast, secure)
-    KexName::Curve25519Sha256,
+    kex::CURVE25519,
 ];
 
 /// CNSA 2.0 compliant encryption algorithms
@@ -95,10 +99,10 @@ pub const CNSA_KEX_ALGORITHMS: &[KexName] = &[
 /// cryptographically superior to CTR mode with separate MAC.
 pub const CNSA_CIPHERS: &[CipherName] = &[
     // Preferred AEAD cipher (authenticated encryption)
-    CipherName::Aes256Gcm,
+    cipher::AES_256_GCM,
 
     // Acceptable fallback (requires separate MAC)
-    CipherName::Aes256Ctr,
+    cipher::AES_256_CTR,
 ];
 
 /// CNSA 2.0 compliant MAC algorithms
@@ -111,10 +115,10 @@ pub const CNSA_CIPHERS: &[CipherName] = &[
 /// integrated authentication). These MACs are used with CTR mode ciphers.
 pub const CNSA_MAC_ALGORITHMS: &[MacName] = &[
     // Stronger hash for CNSA 2.0
-    MacName::HmacSha2_512,
+    mac::HMAC_SHA512,
 
     // Minimum acceptable for CNSA 2.0
-    MacName::HmacSha2_256,
+    mac::HMAC_SHA256,
 ];
 
 /// CNSA 2.0 compliant host key algorithms
@@ -124,18 +128,20 @@ pub const CNSA_MAC_ALGORITHMS: &[MacName] = &[
 /// 2. Ed25519 (acceptable for non-classified, modern EdDSA)
 ///
 /// Note: RSA keys are NOT CNSA 2.0 compliant and must not be used.
-pub const CNSA_HOST_KEY_ALGORITHMS: &[KeyName] = &[
-    // Primary CNSA 2.0 algorithm
-    KeyName::EcdsaSha2Nistp384,
+pub const CNSA_HOST_KEY_ALGORITHMS: &[Algorithm] = &[
+    // Primary CNSA 2.0 algorithm - ECDSA with P-384 curve
+    Algorithm::Ecdsa {
+        curve: EcdsaCurve::NistP384,
+    },
 
     // Acceptable for non-classified use (EdDSA, modern and secure)
-    KeyName::Ed25519,
+    Algorithm::Ed25519,
 ];
 
 /// CNSA 2.0 compliant public key authentication algorithms
 ///
 /// Same as host key algorithms - ECDSA P-384 and Ed25519 only.
-pub const CNSA_PUBLIC_KEY_ALGORITHMS: &[KeyName] = CNSA_HOST_KEY_ALGORITHMS;
+pub const CNSA_PUBLIC_KEY_ALGORITHMS: &[Algorithm] = CNSA_HOST_KEY_ALGORITHMS;
 
 /// Validate that a cipher name is CNSA 2.0 compliant
 pub fn is_cipher_compliant(cipher: &CipherName) -> bool {
@@ -153,7 +159,7 @@ pub fn is_mac_compliant(mac: &MacName) -> bool {
 }
 
 /// Validate that a host key algorithm is CNSA 2.0 compliant
-pub fn is_host_key_compliant(key: &KeyName) -> bool {
+pub fn is_host_key_compliant(key: &Algorithm) -> bool {
     CNSA_HOST_KEY_ALGORITHMS.contains(key)
 }
 
@@ -306,11 +312,18 @@ mod tests {
     #[test]
     fn test_cnsa_host_key_algorithms() {
         // Should contain CNSA 2.0 compliant key types
-        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::EcdsaSha2Nistp384));
-        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::Ed25519));
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&Algorithm::Ecdsa {
+            curve: EcdsaCurve::NistP384,
+        }));
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&Algorithm::Ed25519));
 
         // Should prefer P-384
-        assert_eq!(CNSA_HOST_KEY_ALGORITHMS[0], KeyName::EcdsaSha2Nistp384);
+        assert_eq!(
+            CNSA_HOST_KEY_ALGORITHMS[0],
+            Algorithm::Ecdsa {
+                curve: EcdsaCurve::NistP384,
+            }
+        );
 
         // Should NOT contain RSA
         assert_eq!(CNSA_HOST_KEY_ALGORITHMS.len(), 2);
@@ -336,8 +349,10 @@ mod tests {
 
     #[test]
     fn test_host_key_compliance() {
-        assert!(is_host_key_compliant(&KeyName::EcdsaSha2Nistp384));
-        assert!(is_host_key_compliant(&KeyName::Ed25519));
+        assert!(is_host_key_compliant(&Algorithm::Ecdsa {
+            curve: EcdsaCurve::NistP384,
+        }));
+        assert!(is_host_key_compliant(&Algorithm::Ed25519));
     }
 
     #[test]
@@ -420,13 +435,13 @@ mod tests {
         // Verify that P-384 is present (CNSA 2.0 required)
         assert!(CNSA_KEX_ALGORITHMS.contains(&KexName::EcdhSha2Nistp384),
                "P-384 must be present for CNSA 2.0");
-        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::EcdsaSha2Nistp384),
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&Algorithm::EcdsaSha2Nistp384),
                "ECDSA P-384 must be present for CNSA 2.0");
 
         // Verify Ed25519 is present (acceptable for unclassified)
         assert!(CNSA_KEX_ALGORITHMS.contains(&KexName::Curve25519Sha256),
                "X25519 should be present for unclassified use");
-        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::Ed25519),
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&Algorithm::Ed25519),
                "Ed25519 should be present for unclassified use");
     }
 

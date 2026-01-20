@@ -134,7 +134,9 @@ impl UserMapping {
         }
 
         // Get current process UID/GID if user mapping doesn't specify
+        #[allow(unsafe_code)]
         let effective_uid = self.uid.unwrap_or_else(|| unsafe { libc::getuid() });
+        #[allow(unsafe_code)]
         let effective_gid = self.gid.unwrap_or_else(|| unsafe { libc::getgid() });
 
         // Check owner permissions
@@ -211,8 +213,6 @@ impl UserMappingRegistry {
     /// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication)
     #[cfg(unix)]
     pub fn load_from_system(&mut self) -> std::io::Result<()> {
-        use std::ffi::CString;
-
         // This is a simplified implementation
         // In production, you'd use crates like `users` or `nix` for proper passwd parsing
         debug!("Loading user mappings from system password database");
@@ -239,6 +239,7 @@ impl UserMappingRegistry {
         let c_username = CString::new(username)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
+        #[allow(unsafe_code)]
         unsafe {
             let pwd = libc::getpwnam(c_username.as_ptr());
             if pwd.is_null() {
@@ -282,13 +283,13 @@ impl UserMappingRegistry {
                 }
             };
 
-            let mapping = UserMapping::with_ids(username.to_string(), uid, gid)
-                .with_supplementary_groups(supplementary_gids);
-
             debug!(
                 "Loaded user mapping from system: {} -> UID: {}, GID: {}, supplementary groups: {:?}",
                 username, uid, gid, supplementary_gids
             );
+
+            let mapping = UserMapping::with_ids(username.to_string(), uid, gid)
+                .with_supplementary_groups(supplementary_gids);
 
             self.add_mapping(mapping);
         }
