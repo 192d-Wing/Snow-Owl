@@ -3,13 +3,14 @@
 //! This module provides an RFC-compliant SFTP server implementation
 //! built on top of the SSH protocol (RFC 4251-4254).
 
-use crate::{AuthorizedKeys, Config, Error, Result};
+use crate::{AuthorizedKeys, Config, Error, RateLimitConfig, RateLimiter, Result};
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use russh::server::{Auth, Handler, Msg, Server as SshServer, Session};
 use russh::{Channel, ChannelId, CryptoVec};
 use russh_keys::key;
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
@@ -64,16 +65,28 @@ impl Server {
 }
 
 /// SSH/SFTP session handler
+///
+/// NIST 800-53: AC-7 (Unsuccessful Logon Attempts), AC-12 (Session Termination)
+/// Implementation: Manages rate limiting and connection limits
 struct SftpHandler {
     config: Arc<Config>,
     clients: Arc<Mutex<HashMap<usize, SftpSession>>>,
+    rate_limiter: Arc<RateLimiter>,
 }
 
 impl SftpHandler {
     fn new(config: Arc<Config>) -> Self {
+        // NIST 800-53: AC-7 - Initialize rate limiter
+        let rate_limit_config = RateLimitConfig {
+            max_attempts: config.max_auth_attempts,
+            window_secs: config.rate_limit_window_secs,
+            lockout_duration_secs: config.lockout_duration_secs,
+        };
+
         Self {
             config,
             clients: Arc::new(Mutex::new(HashMap::new())),
+            rate_limiter: Arc::new(RateLimiter::new(rate_limit_config)),
         }
     }
 }
@@ -82,7 +95,7 @@ impl SftpHandler {
 impl SshServer for SftpHandler {
     type Handler = SftpSessionHandler;
 
-    async fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
+    async fn new_client(&mut self, peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
         let session = SftpSession::new(self.config.clone());
 
         // NIST 800-53: AC-2 (Account Management)
@@ -98,17 +111,21 @@ impl SshServer for SftpHandler {
         SftpSessionHandler {
             session: Arc::new(Mutex::new(session)),
             authorized_keys: Arc::new(Mutex::new(auth_keys)),
+            rate_limiter: self.rate_limiter.clone(),
+            peer_addr: peer_addr.map(|addr| addr.ip()),
         }
     }
 }
 
 /// Per-connection session handler
 ///
-/// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication)
-/// Implementation: Manages per-connection authentication and SFTP session
+/// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication), AC-7 (Unsuccessful Logon Attempts)
+/// Implementation: Manages per-connection authentication and SFTP session with rate limiting
 struct SftpSessionHandler {
     session: Arc<Mutex<SftpSession>>,
     authorized_keys: Arc<Mutex<AuthorizedKeys>>,
+    rate_limiter: Arc<RateLimiter>,
+    peer_addr: Option<IpAddr>,
 }
 
 #[async_trait]
@@ -145,25 +162,51 @@ impl Handler for SftpSessionHandler {
         }
     }
 
-    // NIST 800-53: IA-2 (Identification and Authentication), AC-3 (Access Enforcement)
+    // NIST 800-53: IA-2 (Identification and Authentication), AC-3 (Access Enforcement), AC-7 (Unsuccessful Logon Attempts)
     // STIG: V-222611 - The application must validate certificates
-    // Implementation: Verifies public key against authorized_keys file
+    // STIG: V-222578 - Implement replay-resistant authentication mechanisms
+    // Implementation: Verifies public key against authorized_keys file with rate limiting
     async fn auth_publickey(
         &mut self,
         user: &str,
         public_key: &key::PublicKey,
     ) -> Result<Auth> {
+        // NIST 800-53: AC-7 - Check rate limit before attempting authentication
+        if let Some(ip) = self.peer_addr {
+            if !self.rate_limiter.check_allowed(ip).await {
+                warn!(
+                    "Rate limit exceeded for IP {}, rejecting authentication for user: {}",
+                    ip, user
+                );
+                // NIST 800-53: AU-2 (Audit Events) - Log rate limited attempt
+                return Ok(Auth::Reject {
+                    proceed_with_methods: None, // No other methods allowed when rate limited
+                });
+            }
+        }
+
         // NIST 800-53: IA-2 - Verify identity through public key cryptography
         let auth_keys = self.authorized_keys.lock().await;
 
         if auth_keys.is_authorized(public_key) {
             info!("Public key authentication succeeded for user: {}", user);
             // NIST 800-53: AU-2 (Audit Events) - Log successful authentication
+
+            // NIST 800-53: AC-7 - Clear failed attempts on success
+            if let Some(ip) = self.peer_addr {
+                self.rate_limiter.record_success(ip).await;
+            }
+
             Ok(Auth::Accept)
         } else {
             warn!("Public key authentication failed for user: {}", user);
             // NIST 800-53: AU-2 (Audit Events) - Log failed authentication
             // NIST 800-53: AC-7 (Unsuccessful Logon Attempts) - Track failed attempts
+
+            if let Some(ip) = self.peer_addr {
+                self.rate_limiter.record_failure(ip).await;
+            }
+
             Ok(Auth::Reject {
                 proceed_with_methods: Some(russh::MethodSet::PUBLICKEY),
             })

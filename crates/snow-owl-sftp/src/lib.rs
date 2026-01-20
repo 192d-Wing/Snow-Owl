@@ -22,11 +22,13 @@ pub mod auth;
 pub mod config;
 pub mod error;
 pub mod protocol;
+pub mod rate_limit;
 pub mod server;
 pub mod client;
 
 pub use auth::AuthorizedKeys;
 pub use config::Config;
 pub use error::{Error, Result};
+pub use rate_limit::{RateLimitConfig, RateLimiter};
 pub use server::Server;
 pub use client::Client;

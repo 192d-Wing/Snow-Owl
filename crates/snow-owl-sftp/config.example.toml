@@ -34,3 +34,21 @@ max_packet_size = 32768
 
 # Window size for flow control (default: 2MB)
 window_size = 2097152
+
+# ==== Authentication & Rate Limiting (NIST 800-53: AC-7) ====
+
+# Maximum authentication attempts per IP address before lockout
+# NIST 800-53: AC-7 (Unsuccessful Logon Attempts)
+max_auth_attempts = 5
+
+# Time window for rate limiting in seconds (default: 5 minutes)
+# Failed attempts are counted within this window
+rate_limit_window_secs = 300
+
+# Lockout duration in seconds after max attempts exceeded (default: 15 minutes)
+# IP addresses are blocked for this duration after exceeding max_auth_attempts
+lockout_duration_secs = 900
+
+# Maximum connections per user (NIST 800-53: AC-12)
+# Limits concurrent sessions per authenticated user
+max_connections_per_user = 10

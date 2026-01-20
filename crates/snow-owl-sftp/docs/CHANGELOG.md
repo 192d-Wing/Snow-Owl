@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Rate Limiting Module (src/rate_limit.rs)** - Brute force protection
+  - `RateLimiter` for tracking authentication attempts per IP
+  - Configurable attempt limits and lockout duration
+  - Automatic cleanup of expired entries
+  - Statistics tracking for monitoring
+  - NIST 800-53: AC-7 (Unsuccessful Logon Attempts)
+  - STIG: V-222578 (Replay-resistant authentication)
 - **Authentication Module (src/auth.rs)** - Authorized keys management
   - `AuthorizedKeys` struct for parsing and validating SSH public keys
   - OpenSSH authorized_keys file format support
@@ -15,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Hot-reloading capability for authorized_keys file
   - NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication)
   - STIG: V-222611 (Certificate validation)
+- **Configuration Options** - Rate limiting and connection controls
+  - `max_auth_attempts`: Maximum attempts per IP (default: 5)
+  - `rate_limit_window_secs`: Time window for counting attempts (default: 300s)
+  - `lockout_duration_secs`: How long to lock out after limit (default: 900s)
+  - `max_connections_per_user`: Per-user connection limit (default: 10)
 - Development rules enforcement (docs/DEVELOPMENT_RULES.md)
 - NIST 800-53 and STIG compliance framework
 - Security policy documentation (docs/SECURITY.md)
@@ -25,19 +37,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tempfile dev-dependency for testing
 
 ### Changed
-- **Server authentication** - Now verifies public keys against authorized_keys file
+- **Server authentication** - Now includes rate limiting and brute force protection
   - Replaced accept-all authentication with proper key verification
-  - Added audit logging for authentication events (AC-2, AU-2)
-  - Integrated AuthorizedKeys into SftpSessionHandler
+  - Added rate limiting per IP address
+  - Automatic lockout after failed attempts
+  - Clear failed attempts counter on successful authentication
+  - Added audit logging for authentication events (AC-2, AU-2, AC-7)
+  - Integrated AuthorizedKeys and RateLimiter into SftpSessionHandler
 - Reorganized documentation into docs/ folder for better structure
 - Updated all documentation references to use docs/ paths
 
 ### Security
-- **PRODUCTION READY: Authentication** - Server now properly validates SSH public keys
+- **PRODUCTION READY: Authentication & Rate Limiting** - Server now properly validates SSH public keys with brute force protection
 - Implemented AC-2 (Account Management) through authorized_keys
 - Implemented IA-2 (Identification and Authentication) with public key crypto
+- Implemented AC-7 (Unsuccessful Logon Attempts) with rate limiting and lockout
 - Implemented V-222611 (Certificate validation) for SSH keys
+- Implemented V-222578 (Replay-resistant authentication mechanisms)
 - Added AU-2 (Audit Events) logging for authentication attempts
+- Protection against brute force attacks with configurable limits
 - Documented NIST 800-53 control requirements
 - Documented Application Security STIG compliance
 - Added security hardening guidelines

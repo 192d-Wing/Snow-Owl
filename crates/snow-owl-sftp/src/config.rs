@@ -45,6 +45,22 @@ pub struct Config {
     /// Window size for flow control
     #[serde(default = "default_window_size")]
     pub window_size: u32,
+
+    /// Maximum authentication attempts per IP (NIST 800-53: AC-7)
+    #[serde(default = "default_max_auth_attempts")]
+    pub max_auth_attempts: u32,
+
+    /// Rate limit window in seconds (NIST 800-53: AC-7)
+    #[serde(default = "default_rate_limit_window")]
+    pub rate_limit_window_secs: u64,
+
+    /// Lockout duration in seconds after max attempts (NIST 800-53: AC-7)
+    #[serde(default = "default_lockout_duration")]
+    pub lockout_duration_secs: u64,
+
+    /// Maximum connections per user (AC-12: Session Termination)
+    #[serde(default = "default_max_connections_per_user")]
+    pub max_connections_per_user: usize,
 }
 
 impl Default for Config {
@@ -60,6 +76,10 @@ impl Default for Config {
             verbose: false,
             max_packet_size: default_max_packet_size(),
             window_size: default_window_size(),
+            max_auth_attempts: default_max_auth_attempts(),
+            rate_limit_window_secs: default_rate_limit_window(),
+            lockout_duration_secs: default_lockout_duration(),
+            max_connections_per_user: default_max_connections_per_user(),
         }
     }
 }
@@ -134,4 +154,28 @@ fn default_max_packet_size() -> u32 {
 
 fn default_window_size() -> u32 {
     2097152 // 2MB
+}
+
+// NIST 800-53: AC-7 (Unsuccessful Logon Attempts)
+// Default: 5 attempts before lockout
+fn default_max_auth_attempts() -> u32 {
+    5
+}
+
+// NIST 800-53: AC-7 (Unsuccessful Logon Attempts)
+// Default: 5 minute window
+fn default_rate_limit_window() -> u64 {
+    300 // 5 minutes
+}
+
+// NIST 800-53: AC-7 (Unsuccessful Logon Attempts)
+// Default: 15 minute lockout
+fn default_lockout_duration() -> u64 {
+    900 // 15 minutes
+}
+
+// NIST 800-53: AC-12 (Session Termination)
+// Default: 10 connections per user
+fn default_max_connections_per_user() -> usize {
+    10
 }
