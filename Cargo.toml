@@ -4,6 +4,7 @@ members = [
     "crates/snow-owl",
     "crates/snow-owl-core",
     "crates/snow-owl-tftp",
+    "crates/snow-owl-sftp",
     "crates/snow-owl-http",
     "crates/snow-owl-db",
 ]

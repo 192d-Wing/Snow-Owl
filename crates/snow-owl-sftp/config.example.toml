@@ -1,0 +1,36 @@
+# Snow Owl SFTP Server Configuration Example
+#
+# Copy this file to config.toml and modify as needed
+
+# Server bind address (0.0.0.0 for all interfaces)
+bind_address = "0.0.0.0"
+
+# Server port (2222 is non-privileged, 22 is standard SSH)
+port = 2222
+
+# Root directory for SFTP file operations
+# All client paths will be relative to this directory
+root_dir = "/tmp/sftp"
+
+# SSH host key path
+# If the file doesn't exist, a temporary key will be generated
+host_key_path = "/etc/ssh/ssh_host_rsa_key"
+
+# Authorized keys file path
+# Public keys in this file will be allowed to authenticate
+authorized_keys_path = "~/.ssh/authorized_keys"
+
+# Maximum concurrent connections
+max_connections = 100
+
+# Connection timeout in seconds
+timeout = 300
+
+# Enable verbose logging
+verbose = false
+
+# Maximum packet size in bytes (RFC 4254 requires minimum 32768)
+max_packet_size = 32768
+
+# Window size for flow control (default: 2MB)
+window_size = 2097152

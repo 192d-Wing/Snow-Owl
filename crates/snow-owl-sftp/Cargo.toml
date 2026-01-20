@@ -1,0 +1,44 @@
+[package]
+name = "snow-owl-sftp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Server binary
+[[bin]]
+name = "snow-owl-sftp-server"
+path = "src/bin/server.rs"
+
+# Client binary
+[[bin]]
+name = "snow-owl-sftp-client"
+path = "src/bin/client.rs"
+
+[lib]
+name = "snow_owl_sftp"
+path = "src/lib.rs"
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
+bytes.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+serde.workspace = true
+toml.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+
+# Cryptography for SSH/SFTP (RFC 4251-4254)
+# Using russh which implements SSH protocol
+russh = "0.56"
+russh-keys = "0.49"
+
+# Additional dependencies for SFTP
+async-trait = "0.1"
