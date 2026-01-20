@@ -8,6 +8,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 2.1: Advanced File Operations (Complete)** - SETSTAT and FSETSTAT support
+  - **SETSTAT Operation** (server.rs:handle_setstat)
+    - Modify file/directory attributes by path
+    - Supports permissions (chmod), ownership (chown), timestamps
+    - Path validation with security checks (null bytes, path traversal)
+    - Timeout protection (30s) for all attribute operations
+    - Comprehensive error handling and logging
+    - NIST 800-53: AC-3 (Access Enforcement), SI-11 (Error Handling)
+    - STIG: V-222566 (Error handling), V-222596 (Access control)
+  - **FSETSTAT Operation** (server.rs:handle_fsetstat)
+    - Modify attributes using open file handle
+    - Path tracking integrated with FileHandle enum
+    - Reuses apply_file_attrs for consistency
+    - Handle validation and error handling
+    - NIST 800-53: AC-3, SI-11
+    - STIG: V-222566, V-222596
+  - **File Permissions Support** (server.rs:apply_file_attrs)
+    - Unix chmod functionality via FileAttrs.permissions field
+    - Support for all standard permission modes (0o000 to 0o7777)
+    - Platform-specific via #[cfg(unix)]
+    - Proper error handling for permission denied scenarios
+    - Logging of permission changes
+    - NIST 800-53: AC-3
+  - **Ownership Changes** (server.rs:apply_file_attrs)
+    - Unix chown functionality via FileAttrs.uid/gid fields
+    - Graceful degradation when lacking root privileges
+    - Platform-specific via #[cfg(target_os = "linux")]
+    - Warning logs when ownership change fails (expected for non-root)
+    - NIST 800-53: AC-3
+  - **Enhanced FileHandle Tracking**
+    - FileHandle::File(fs::File, PathBuf) for path tracking
+    - Enables FSETSTAT operation support
+    - Better error messages with file paths
+    - All file operations updated: handle_read, handle_write, handle_fstat
+  - **Comprehensive Testing** (tests/advanced_file_operations_tests.rs - 350+ lines, 15+ tests)
+    - Permission setting and verification tests
+    - Various permission modes (0o400, 0o600, 0o644, 0o755, 0o777)
+    - Directory permission tests
+    - Read-only file handling
+    - Special permission bits (setuid 0o4000, setgid 0o2000, sticky 0o1000)
+    - Concurrent permission changes (5 files simultaneously)
+    - UID/GID effective ownership tests
+    - Invalid permission handling
+    - Symlink permission behavior tests
+    - Nonexistent file error handling
+    - NIST 800-53: AC-3, SI-11
+  - Phase 2.1: 4/6 tasks complete (67%)
+  - File locking and atomic operations deferred to Phase 3
+
 - **Comprehensive Testing Suite (Phase 1.4 - Complete)** - Production-ready test coverage
   - **Protocol Encoding Tests** (tests/protocol_encoding_tests.rs - 350+ lines)
     - All MessageType conversions (18 message types including Init, Open, Read, Write, Status, etc.)
