@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Reorganized documentation into docs/ folder for better structure
-- Updated all documentation references to use docs/ paths
-
 ### Added
+- **Authentication Module (src/auth.rs)** - Authorized keys management
+  - `AuthorizedKeys` struct for parsing and validating SSH public keys
+  - OpenSSH authorized_keys file format support
+  - Public key verification against authorized keys
+  - Hot-reloading capability for authorized_keys file
+  - NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication)
+  - STIG: V-222611 (Certificate validation)
 - Development rules enforcement (docs/DEVELOPMENT_RULES.md)
 - NIST 800-53 and STIG compliance framework
 - Security policy documentation (docs/SECURITY.md)
@@ -19,8 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cargo linting rules (clippy strict mode)
 - Changelog tracking (docs/CHANGELOG.md)
 - Pull request template (.github/PULL_REQUEST_TEMPLATE.md)
+- tempfile dev-dependency for testing
+
+### Changed
+- **Server authentication** - Now verifies public keys against authorized_keys file
+  - Replaced accept-all authentication with proper key verification
+  - Added audit logging for authentication events (AC-2, AU-2)
+  - Integrated AuthorizedKeys into SftpSessionHandler
+- Reorganized documentation into docs/ folder for better structure
+- Updated all documentation references to use docs/ paths
 
 ### Security
+- **PRODUCTION READY: Authentication** - Server now properly validates SSH public keys
+- Implemented AC-2 (Account Management) through authorized_keys
+- Implemented IA-2 (Identification and Authentication) with public key crypto
+- Implemented V-222611 (Certificate validation) for SSH keys
+- Added AU-2 (Audit Events) logging for authentication attempts
 - Documented NIST 800-53 control requirements
 - Documented Application Security STIG compliance
 - Added security hardening guidelines

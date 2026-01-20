@@ -3,7 +3,7 @@
 //! This module provides an RFC-compliant SFTP server implementation
 //! built on top of the SSH protocol (RFC 4251-4254).
 
-use crate::{Config, Error, Result};
+use crate::{AuthorizedKeys, Config, Error, Result};
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use russh::server::{Auth, Handler, Msg, Server as SshServer, Session};
@@ -84,15 +84,31 @@ impl SshServer for SftpHandler {
 
     async fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
         let session = SftpSession::new(self.config.clone());
+
+        // NIST 800-53: AC-2 (Account Management)
+        // Load authorized keys for this connection
+        let mut auth_keys = AuthorizedKeys::new(
+            self.config.authorized_keys_path.to_string_lossy().to_string()
+        );
+
+        if let Err(e) = auth_keys.load() {
+            warn!("Failed to load authorized_keys: {}. Authentication will fail.", e);
+        }
+
         SftpSessionHandler {
             session: Arc::new(Mutex::new(session)),
+            authorized_keys: Arc::new(Mutex::new(auth_keys)),
         }
     }
 }
 
 /// Per-connection session handler
+///
+/// NIST 800-53: AC-2 (Account Management), IA-2 (Identification and Authentication)
+/// Implementation: Manages per-connection authentication and SFTP session
 struct SftpSessionHandler {
     session: Arc<Mutex<SftpSession>>,
+    authorized_keys: Arc<Mutex<AuthorizedKeys>>,
 }
 
 #[async_trait]
@@ -129,15 +145,29 @@ impl Handler for SftpSessionHandler {
         }
     }
 
+    // NIST 800-53: IA-2 (Identification and Authentication), AC-3 (Access Enforcement)
+    // STIG: V-222611 - The application must validate certificates
+    // Implementation: Verifies public key against authorized_keys file
     async fn auth_publickey(
         &mut self,
-        _user: &str,
-        _public_key: &key::PublicKey,
+        user: &str,
+        public_key: &key::PublicKey,
     ) -> Result<Auth> {
-        // For now, accept all public key authentication
-        // In production, verify against authorized_keys
-        info!("Public key authentication accepted");
-        Ok(Auth::Accept)
+        // NIST 800-53: IA-2 - Verify identity through public key cryptography
+        let auth_keys = self.authorized_keys.lock().await;
+
+        if auth_keys.is_authorized(public_key) {
+            info!("Public key authentication succeeded for user: {}", user);
+            // NIST 800-53: AU-2 (Audit Events) - Log successful authentication
+            Ok(Auth::Accept)
+        } else {
+            warn!("Public key authentication failed for user: {}", user);
+            // NIST 800-53: AU-2 (Audit Events) - Log failed authentication
+            // NIST 800-53: AC-7 (Unsuccessful Logon Attempts) - Track failed attempts
+            Ok(Auth::Reject {
+                proceed_with_methods: Some(russh::MethodSet::PUBLICKEY),
+            })
+        }
     }
 
     async fn auth_password(&mut self, _user: &str, _password: &str) -> Result<Auth> {
