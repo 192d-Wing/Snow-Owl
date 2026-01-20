@@ -23,6 +23,10 @@ struct Args {
     #[arg(short, long, default_value = "user")]
     username: String,
 
+    /// Path to SSH private key
+    #[arg(short = 'i', long, default_value = "~/.ssh/id_rsa")]
+    identity: PathBuf,
+
     /// Verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -96,8 +100,20 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Expand tilde in identity path
+    let identity_path = if args.identity.starts_with("~") {
+        if let Some(home) = std::env::var_os("HOME") {
+            let path_str = args.identity.to_string_lossy();
+            PathBuf::from(path_str.replacen("~", &home.to_string_lossy(), 1))
+        } else {
+            args.identity
+        }
+    } else {
+        args.identity
+    };
+
     // Connect to server
-    let mut client = match Client::connect(&args.host, args.port, &args.username).await {
+    let mut client = match Client::connect(&args.host, args.port, &args.username, &identity_path).await {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to connect: {}", e);

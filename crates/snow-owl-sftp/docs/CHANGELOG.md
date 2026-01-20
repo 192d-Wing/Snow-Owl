@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Complete SFTP Client Implementation (src/client.rs)** - Full-featured RFC-compliant SFTP client
+  - SSH connection establishment with public key authentication
+  - SFTP protocol initialization and version negotiation
+  - File upload (PUT) operation with chunked transfers
+  - File download (GET) operation with chunked reads (32KB chunks)
+  - Directory listing with file attributes
+  - Directory operations (mkdir, rmdir)
+  - File operations (remove, rename)
+  - Attribute retrieval (stat, fstat)
+  - Graceful session termination
+  - Complete rustdoc documentation for all public methods
+  - NIST 800-53: IA-2 (Authentication), SC-8 (Transmission Confidentiality), SC-13 (Cryptographic Protection), AC-3 (Access Enforcement), AC-12 (Session Termination)
+  - STIG: V-222577 (Cryptographic mechanisms), V-222611 (Certificate validation)
+- **SFTP Client Binary (src/bin/client.rs)** - CLI tool for SFTP operations
+  - Commands: put, get, ls, mkdir, rm, rmdir, rename
+  - SSH private key authentication with -i/--identity flag
+  - Configurable host (-H), port (-p), username (-u)
+  - Verbose logging support (-v)
+  - User-friendly error messages
+  - Tilde expansion for key paths (~/.ssh/id_rsa)
 - **Connection Tracking Module (src/connection_tracker.rs)** - Per-user concurrent connection limits
   - `ConnectionTracker` for tracking and limiting concurrent connections per user
   - Configurable maximum connections per user (default: 10)
