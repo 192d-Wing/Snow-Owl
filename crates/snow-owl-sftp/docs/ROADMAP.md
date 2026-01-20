@@ -8,47 +8,52 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 **Version**: 0.1.0 (Initial Implementation)
 **SFTP Protocol Version**: 3
-**Completion**: ~60% Core Features
+**Completion**: Phase 1 & 2 Complete (100%)
 
 ### ✅ Completed
 - Core SFTP protocol structures
-- Server implementation with basic operations
+- Server implementation with all SFTP v3 operations
 - RFC-compliant message encoding/decoding
 - Security features (path traversal protection)
-- Configuration system
-- Server binary
+- Configuration system with hot reload
+- Server and client binaries
 - Documentation and tests
 - Development rules and compliance framework
 - NIST 800-53 and STIG documentation
 - Code quality enforcement (clippy, fmt)
 - Security policy and vulnerability reporting
+- Full client implementation
+- Production authentication (authorized_keys, rate limiting)
+- User/group permission mapping
+- Transfer resume and recovery
+- Symbolic link operations
+- Advanced file operations (SETSTAT, FSETSTAT)
+- Metrics and audit logging
+- russh 0.56 API compatibility
 
 ### 🚧 In Progress
-- Client implementation
-- Production authentication
-- NIST/STIG compliance comments in code
+- Performance optimizations (Phase 3)
 
 ### 📋 Planned
-- Advanced features
-- Performance optimizations
-- Extended protocol support
+- Extended protocol support (SFTP v4+)
+- Enterprise features
 
 ---
 
 ## 🎯 Roadmap Phases
 
-## Phase 1: Core Stability ⭐ (Current Priority)
+## Phase 1: Core Stability ✅ (Complete)
 
 **Goal**: Make the server production-ready with reliable core features
 **Timeline**: 2-3 weeks
-**Status**: Nearly Complete (98%)
+**Status**: Complete (100%)
 
-### 1.1 Authentication & Security
+### 1.1 Authentication & Security ✅
 - [x] Implement authorized_keys file parsing
 - [x] Add proper public key verification
 - [x] Add rate limiting for authentication attempts
 - [x] Implement connection limits per user
-- [ ] Implement user/group permission mapping
+- [x] Implement user/group permission mapping
 - [x] Add audit logging for authentication events
 
 **Success Criteria**: Server can authenticate real users with SSH keys and enforce limits ✅ **ACHIEVED**
@@ -67,9 +72,11 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - NIST 800-53: AC-2, IA-2, AC-7, AC-10, AC-12 implementation
 - STIG: V-222611, V-222578, V-222601 compliance
 - Comprehensive authentication and session audit logging
-
-**Remaining**:
-- User/group permission mapping (deferred to Phase 2.4)
+- **UserMapping module for OS-level permission enforcement**
+- **UserMappingRegistry for SFTP-to-OS user mapping**
+- **Unix permission checks (read/write/execute)**
+- **Supplementary group support**
+- **System user loading via getpwnam/getgrouplist**
 
 ### 1.2 Complete Client Implementation
 - [x] SSH connection establishment
@@ -92,12 +99,12 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - NIST 800-53: IA-2, SC-8, SC-13, AC-3, AC-12
 - STIG: V-222577, V-222611
 
-### 1.3 Error Handling & Reliability
+### 1.3 Error Handling & Reliability ✅
 - [x] Comprehensive error handling for all operations
 - [x] Graceful handling of connection drops
 - [x] Proper cleanup of file handles
 - [x] Timeout handling for all operations
-- [ ] Recovery from partial transfers
+- [x] Recovery from partial transfers
 - [x] Detailed error messages for troubleshooting
 
 **Success Criteria**: Server handles errors gracefully without crashes ✅ **ACHIEVED**
@@ -119,9 +126,10 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - Detailed contextual error messages with proper logging
 - NIST 800-53: SI-11, AC-3, AC-12, SC-8, SI-10 implementation
 - STIG: V-222566, V-222596, V-222601, V-222396 compliance
-
-**Remaining**:
-- Recovery from partial transfers (deferred to Phase 2)
+- **TransferResumeManager for interrupted transfer recovery**
+- **TransferState tracking (offset, checksum, timestamps)**
+- **Automatic resume detection and continuation**
+- **TransferChecksum for integrity verification (SHA-256/384/512)**
 
 ### 1.4 Testing ✅
 - [x] Unit tests for all protocol encoding/decoding
@@ -510,11 +518,11 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 ---
 
-## Phase 3: Performance Optimization 🚀
+## Phase 3: Performance Optimization 🚀 (Current Priority)
 
 **Goal**: Optimize for high-performance file transfers
 **Timeline**: 2-3 weeks
-**Status**: Planned
+**Status**: Next Phase
 
 ### 3.1 Zero-Copy Transfers
 - [ ] Implement sendfile() for Linux
@@ -730,62 +738,65 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 ## 🗺️ Quick Reference Timeline
 
-| Phase | Focus | Duration | Start |
-|-------|-------|----------|-------|
-| Phase 1 | Core Stability | 2-3 weeks | Now |
-| Phase 2 | Production Features | 3-4 weeks | Week 4 |
-| Phase 3 | Performance | 2-3 weeks | Week 8 |
-| Phase 4 | Extended Protocol | 3-4 weeks | Week 11 |
-| Phase 5 | Enterprise | 4-5 weeks | Week 15 |
-| Phase 6 | Ecosystem | Ongoing | Week 20+ |
+| Phase | Focus | Duration | Status |
+|-------|-------|----------|--------|
+| Phase 1 | Core Stability | 2-3 weeks | ✅ Complete |
+| Phase 2 | Production Features | 3-4 weeks | ✅ Complete |
+| Phase 3 | Performance | 2-3 weeks | 🚧 Next |
+| Phase 4 | Extended Protocol | 3-4 weeks | Planned |
+| Phase 5 | Enterprise | 4-5 weeks | Planned |
+| Phase 6 | Ecosystem | Ongoing | Future |
 
-**Total Estimated Time to v1.0**: ~4-5 months
+**Total Estimated Time to v1.0**: ~2-3 months remaining
 
 ---
 
 ## 🎯 Immediate Next Steps (This Week)
 
-1. **Authentication System**
-   - Parse authorized_keys file format
-   - Implement key verification
-   - Add user mapping
+1. **Performance Optimization (Phase 3)**
+   - Implement zero-copy transfers with sendfile()
+   - Optimize buffer management
+   - Add connection pooling
 
-2. **Client Implementation**
-   - Implement SSH connection
-   - Add INIT handshake
-   - Implement file upload
+2. **Testing with Real Clients**
+   - End-to-end testing with OpenSSH sftp
+   - Test with WinSCP and FileZilla
+   - Verify CNSA 2.0 compliance with real connections
 
-3. **Testing**
-   - Add integration tests
-   - Test with OpenSSH client
-   - Fix any compatibility issues
+3. **Benchmarking**
+   - Create benchmark suite
+   - Compare with OpenSSH SFTP server
+   - Profile and optimize hot paths
 
 4. **Documentation**
-   - Write developer guide
-   - Add code examples
-   - Document configuration options
+   - Update API documentation
+   - Add deployment guide
+   - Document performance tuning options
 
 ---
 
 ## 💡 Decision Points
 
-### Open Questions to Resolve
+### Resolved Decisions
 
-1. **Client Library Strategy**
-   - Build on russh directly?
-   - Use existing SFTP client libraries?
-   - Write from scratch?
+1. **Client Library Strategy** ✅
+   - Built on russh 0.56 directly
+   - Full SFTP v3 client implementation complete
+   - CNSA 2.0 compliant cryptography
 
-2. **Performance vs. Features**
-   - Focus on SFTP v3 perfection or add v4+ support?
-   - Prioritize speed or feature completeness?
+2. **Performance vs. Features** ✅
+   - SFTP v3 feature-complete first
+   - Performance optimization in Phase 3
+   - v4+ support planned for Phase 4
 
-3. **Platform Support**
+### Open Questions
+
+1. **Platform Support**
    - Windows support priority?
    - BSD/Unix variants?
    - Embedded systems?
 
-4. **Licensing**
+2. **Licensing**
    - Current: MIT OR Apache-2.0
    - Consider: GPL for some components?
 
@@ -814,9 +825,9 @@ This roadmap is a living document. Contributors can:
 | Version | Date | Major Changes |
 |---------|------|---------------|
 | 0.1.0 | 2026-01-19 | Initial implementation with core protocol |
-| 0.2.0 | TBD | Authentication & client completion |
-| 0.3.0 | TBD | Production features |
-| 0.4.0 | TBD | Performance optimization |
+| 0.2.0 | 2026-01-20 | Phase 1 & 2 complete: auth, client, user mapping, transfer resume, symlinks, metrics, audit, russh 0.56 compatibility |
+| 0.3.0 | TBD | Performance optimization |
+| 0.4.0 | TBD | Extended protocol support (SFTP v4+) |
 | 1.0.0 | TBD | Production-ready release |
 
 ---
@@ -834,7 +845,7 @@ This roadmap is a living document. Contributors can:
 
 ---
 
-**Last Updated**: 2026-01-19
-**Next Review**: 2026-02-02
+**Last Updated**: 2026-01-20
+**Next Review**: 2026-02-03
 
 For questions or suggestions, open an issue on GitHub!
