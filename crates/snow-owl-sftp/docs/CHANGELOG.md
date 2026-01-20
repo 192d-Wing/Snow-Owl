@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **TFTP IPv6 Support (✅ Complete)** - Full IPv6 network support for TFTP server
+  - Fixed EAFNOSUPPORT error (os error 97) in per-transfer socket creation
+  - Added `create_transfer_socket()` helper using socket2 crate for explicit domain control
+  - Fixed 4 locations with hardcoded IPv4 socket binds in `src/bin/server.rs`
+  - Dual-stack support: server binds to `[::]` accepts both IPv4 and IPv6 clients
+  - Address family detection: per-transfer sockets match client's address family
+  - All 10 IPv4 integration tests still pass
+  - IPv6 manual tests pass (loopback and dual-stack configurations)
+  - Updated [IPV6_SUPPORT.md](../../snow-owl-tftp/docs/IPV6_SUPPORT.md) documentation
+  - Compliant with Rule 2: IPv6 Network Support and NIST 800-53 SC-7
+
 - **Phase 2.3: Logging & Monitoring (✅ Complete - 71%)** - Metrics and Audit Trail
   - **Metrics Module** (metrics.rs - 750+ lines, 9 tests)
     - Thread-safe metrics using atomic operations (Arc<AtomicU64>)
