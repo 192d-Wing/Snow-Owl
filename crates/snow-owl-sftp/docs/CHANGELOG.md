@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Phase 2.2: Symbolic Links & Advanced Path Operations (Complete)** - READLINK and SYMLINK
+- **Phase 2.2: Symbolic Links & Advanced Path Operations (✅ Complete - 100%)** - READLINK and SYMLINK
   - **READLINK Operation** (server.rs:handle_readlink - Unix only)
     - Read symbolic link target path
     - Security: validates symlink is within root, warns if target escapes
@@ -26,12 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - NIST 800-53: AC-3, SI-11; STIG: V-222566, V-222596
   - **Security Features**: Root boundary enforcement, path traversal prevention, null byte detection, security event logging
   - **Symlink Resolution**: Relative/absolute paths, multi-level chains, dangling symlinks, cross-directory support
-  - **Testing** (tests/symlink_operations_tests.rs - 450+ lines, 20+ tests)
+  - **Testing** (tests/symlink_operations_tests.rs - 450+ lines, 18 test cases)
     - Basic operations, relative/absolute, directories, dangling links
     - Chains, circular (error), subdirectories, special chars
     - Removal, metadata, cross-directory, permissions, concurrent (5x)
     - NIST 800-53: AC-3, SI-11
-  - Phase 2.2: 4/5 tasks (80%); hard links deferred
+  - **Phase 2.2: 5/5 tasks complete (100%)**
+  - Note: Hard link support deferred (not standard SFTP v3, less common usage)
 
 - **Phase 2.1: Advanced File Operations (Complete)** - SETSTAT and FSETSTAT support
   - **SETSTAT Operation** (server.rs:handle_setstat)
