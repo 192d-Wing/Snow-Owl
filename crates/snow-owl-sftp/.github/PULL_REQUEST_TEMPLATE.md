@@ -25,6 +25,8 @@
 - [ ] `./verify.sh` passes without errors
 - [ ] NIST 800-53 controls documented for security-relevant code
 - [ ] Application Security STIG findings addressed
+- [ ] **IPv6 support implemented for network code** (prefer IPv6, fallback to IPv4)
+- [ ] **IPv6 tests added** (if network code changed - test IPv4, IPv6, dual-stack)
 - [ ] docs/CHANGELOG.md updated with changes
 - [ ] Relevant documentation updated (README, docs/RFC_COMPLIANCE.md, etc.)
 
@@ -40,6 +42,7 @@
 - [ ] AU-2: Audit Events
 - [ ] AU-3: Content of Audit Records
 - [ ] IA-2: Identification and Authentication
+- [ ] SC-7: Boundary Protection (IPv6 support)
 - [ ] SC-8: Transmission Confidentiality
 - [ ] SC-13: Cryptographic Protection
 - [ ] SI-10: Information Input Validation

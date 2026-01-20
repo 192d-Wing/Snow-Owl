@@ -239,13 +239,14 @@ sftp -P 2222 user@localhost
 Contributions are welcome! This crate aims to be a fully RFC-compliant SFTP implementation.
 
 **Before contributing, please read:**
-- [docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md) - Mandatory development rules
+- [docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md) - 4 mandatory development rules
 - [docs/SECURITY.md](docs/SECURITY.md) - Security requirements and compliance
 
 All code must:
-- Include NIST 800-53 and STIG compliance comments
-- Pass `cargo fmt` and `cargo clippy` with zero warnings
-- Update documentation
+1. Include NIST 800-53 and STIG compliance comments
+2. Support IPv6 (prefer IPv6, fallback to IPv4)
+3. Pass `cargo fmt` and `cargo clippy` with zero warnings
+4. Update documentation
 
 Run `./verify.sh` before committing to ensure compliance.
 

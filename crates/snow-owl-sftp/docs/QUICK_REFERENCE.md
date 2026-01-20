@@ -74,6 +74,7 @@ pub fn security_function() -> Result<()> {
 | AU-2 | Audit Events | Logging what happened |
 | AU-3 | Audit Content | What to log (who, when, what) |
 | IA-2 | Authentication | SSH key auth |
+| SC-7 | Boundary Protection | Network protocols, IPv6 |
 | SC-8 | Transmission Confidentiality | Encryption |
 | SC-13 | Cryptographic Protection | Crypto algorithms |
 | SI-10 | Input Validation | All user input |
@@ -153,6 +154,13 @@ let value = something?;
 // NIST 800-53: AC-3
 // STIG: V-222596
 fn authorize() { ... }
+
+// ✅ YES IPv6 support for network code
+// NIST 800-53: SC-7
+match TcpListener::bind(format!("[::]:{}", port)).await {
+    Ok(listener) => Ok(listener), // IPv6 dual-stack
+    Err(_) => TcpListener::bind(format!("0.0.0.0:{}", port)).await, // IPv4 fallback
+}
 
 // ✅ YES complete rustdoc
 /// Function description
@@ -276,11 +284,12 @@ cargo test --package snow-owl-sftp test_name -- --nocapture
 
 1. **Run verify.sh before committing** - Saves time in CI
 2. **Add NIST comments as you code** - Easier than retroactively
-3. **Update docs immediately** - Don't let them get stale
-4. **Use descriptive commit messages** - Helps reviewers
-5. **Run clippy often** - Fix issues early
-6. **Keep CHANGELOG current** - Every commit should have entry
-7. **Read DEVELOPMENT_RULES.md** - Know the requirements
+3. **Support IPv6 for all network code** - Prefer `[::]` over `0.0.0.0`
+4. **Update docs immediately** - Don't let them get stale
+5. **Use descriptive commit messages** - Helps reviewers
+6. **Run clippy often** - Fix issues early
+7. **Keep CHANGELOG current** - Every commit should have entry
+8. **Read DEVELOPMENT_RULES.md** - Know the requirements
 
 ---
 

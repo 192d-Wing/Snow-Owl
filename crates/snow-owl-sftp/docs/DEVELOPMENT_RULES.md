@@ -93,7 +93,93 @@ Before committing ANY file:
 
 ---
 
-## 🧹 Rule 2: Code Quality Standards
+## 🌐 Rule 2: IPv6 Network Support
+
+**ALL network code MUST support IPv6 and prefer IPv6 by default when available**
+
+### Requirements
+
+1. **IPv6 Must Always Be Supported**
+   - All network listening sockets must support IPv6
+   - All client connections must support IPv6
+   - All IP address parsing must handle both IPv4 and IPv6
+
+2. **IPv6 Preferred by Default**
+   - When both IPv4 and IPv6 are available, prefer IPv6
+   - Use dual-stack (IPv6 with IPv4 fallback) by default
+   - Configuration should allow IPv6-only mode
+
+3. **NIST 800-53 Compliance**
+   - **SC-7**: Boundary Protection - Support modern network protocols
+   - **SC-8**: Transmission Confidentiality - IPv6 native security features
+
+### Implementation Standards
+
+```rust
+// NIST 800-53: SC-7 (Boundary Protection), SC-8 (Transmission Confidentiality)
+// Implementation: IPv6 support with dual-stack capability
+/// Bind server to address with IPv6 preference
+///
+/// Prefers IPv6 (::) over IPv4 (0.0.0.0) when available.
+/// Falls back to IPv4 if IPv6 is not supported.
+pub async fn bind(config: &Config) -> Result<TcpListener> {
+    // Try IPv6 first (dual-stack)
+    match TcpListener::bind(format!("[::]:{}", config.port)).await {
+        Ok(listener) => {
+            info!("Server bound to IPv6 dual-stack [::]:{}", config.port);
+            Ok(listener)
+        }
+        Err(_) => {
+            // Fallback to IPv4 only
+            warn!("IPv6 not available, falling back to IPv4");
+            let listener = TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
+            info!("Server bound to IPv4 0.0.0.0:{}", config.port);
+            Ok(listener)
+        }
+    }
+}
+```
+
+### Configuration Standards
+
+```toml
+# IPv6 configuration (NIST 800-53: SC-7)
+
+# Bind address - prefer IPv6 dual-stack
+# "::" = IPv6 dual-stack (accepts IPv4 and IPv6)
+# "0.0.0.0" = IPv4 only (legacy)
+# "<specific-ipv6>" = Specific IPv6 address
+bind_address = "::"
+
+# Force IPv6 only (disable IPv4 fallback)
+ipv6_only = false
+```
+
+### Testing Requirements
+
+All network code must be tested with:
+- [ ] IPv6 addresses (`::1`, `2001:db8::1`)
+- [ ] IPv4 addresses (`127.0.0.1`, `192.168.1.1`)
+- [ ] IPv4-mapped IPv6 (`::ffff:192.168.1.1`)
+- [ ] Dual-stack scenarios
+
+### Checklist for Network Code
+
+Before committing network-related code:
+
+- [ ] Supports IPv6 addresses
+- [ ] Prefers IPv6 when available
+- [ ] Falls back to IPv4 gracefully
+- [ ] Configuration allows IPv6-only mode
+- [ ] Tested with both IPv4 and IPv6
+- [ ] IP address parsing handles both formats
+- [ ] Rate limiting works with both address families
+- [ ] Logging displays addresses correctly
+- [ ] NIST SC-7 documented
+
+---
+
+## 🧹 Rule 3: Code Quality Standards
 
 **ALL code MUST pass `cargo fmt` and `cargo clippy` with ZERO issues**
 
@@ -193,7 +279,7 @@ cargo audit
 
 ---
 
-## 📚 Rule 3: Documentation Synchronization
+## 📚 Rule 4: Documentation Synchronization
 
 **ALL documentation MUST be updated at the end of EVERY action**
 
@@ -350,20 +436,22 @@ cargo test --doc --package snow-owl-sftp
 2. Identify applicable STIG findings
 3. Review existing documentation
 4. Plan documentation updates
+5. Plan IPv6 support for network code
 
 ### Step 2: While Writing Code
 
 1. Add NIST/STIG comments as you write
-2. Write rustdoc for new public items
-3. Add inline comments for complex logic
-4. Consider security implications
+2. Implement IPv6 support for network operations
+3. Write rustdoc for new public items
+4. Add inline comments for complex logic
+5. Consider security implications
 
 ### Step 3: After Writing Code
 
 1. Run `cargo fmt`
 2. Run `cargo clippy -- -D warnings`
 3. Fix all issues (no exceptions without justification)
-4. Add/update tests
+4. Add/update tests (including IPv6 tests for network code)
 5. Verify tests pass
 
 ### Step 4: Documentation Update

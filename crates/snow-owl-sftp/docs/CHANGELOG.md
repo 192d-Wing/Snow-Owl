@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **IPv6 Network Support Requirement (Rule 2)** - Mandatory IPv6 support for all network code
+  - All network code must support IPv6
+  - IPv6 preferred by default when available
+  - Dual-stack (IPv6 with IPv4 fallback) as default configuration
+  - IPv6-only mode support in configuration
+  - NIST 800-53: SC-7 (Boundary Protection)
+  - Updated development rules to include IPv6 requirements
+  - Updated testing requirements to include IPv6 scenarios
 - **Rate Limiting Module (src/rate_limit.rs)** - Brute force protection
   - `RateLimiter` for tracking authentication attempts per IP
   - Configurable attempt limits and lockout duration
@@ -62,6 +70,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added vulnerability reporting process
 
 ### Documentation
+- **Updated Development Rules** - Now includes 4 mandatory rules (was 3)
+  - Rule 1: Security Compliance Documentation (unchanged)
+  - Rule 2: IPv6 Network Support (NEW)
+  - Rule 3: Code Quality Standards (was Rule 2)
+  - Rule 4: Documentation Synchronization (was Rule 3)
+- Updated RULES_SUMMARY.md with IPv6 requirements
+- Updated QUICK_REFERENCE.md with IPv6 examples and NIST SC-7
+- Added IPv6 support checklist for network code
+- Added IPv6 testing requirements (IPv4, IPv6, dual-stack, IPv4-mapped)
 - Created comprehensive development rules (6000+ words)
 - Added security compliance documentation
 - Enhanced README with security warnings
