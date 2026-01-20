@@ -2,6 +2,30 @@
 
 RFC-compliant SFTP (SSH File Transfer Protocol) server and client implementation in Rust.
 
+> ⚠️ **DEVELOPMENT VERSION - NOT PRODUCTION READY**
+>
+> Version 0.1.0 is for development and testing only. See [SECURITY.md](SECURITY.md) for current limitations.
+
+## 📚 Documentation
+
+### User Documentation
+- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
+- **[README.md](README.md)** - This file: Overview and features
+
+### Developer Documentation
+- **[RULES_SUMMARY.md](RULES_SUMMARY.md)** - ⭐ START HERE: 3 mandatory rules
+- **[DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md)** - Complete development rules (detailed)
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - One-page developer cheat sheet
+- **[ROADMAP.md](ROADMAP.md)** - Development roadmap and future plans
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
+
+### Compliance Documentation
+- **[RFC_COMPLIANCE.md](RFC_COMPLIANCE.md)** - Detailed RFC 4251-4254 compliance
+- **[SECURITY.md](SECURITY.md)** - Security policy, NIST 800-53, STIG compliance
+
+### Configuration
+- **[config.example.toml](config.example.toml)** - Example server configuration
+
 ## Overview
 
 This crate provides a full implementation of the SFTP protocol built on top of the SSH protocol suite. It follows the specifications defined in:
@@ -213,6 +237,33 @@ sftp -P 2222 user@localhost
 ## Contributing
 
 Contributions are welcome! This crate aims to be a fully RFC-compliant SFTP implementation.
+
+**Before contributing, please read:**
+- [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) - Mandatory development rules
+- [SECURITY.md](SECURITY.md) - Security requirements and compliance
+
+All code must:
+- Include NIST 800-53 and STIG compliance comments
+- Pass `cargo fmt` and `cargo clippy` with zero warnings
+- Update documentation
+
+Run `./verify.sh` before committing to ensure compliance.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for:
+- NIST 800-53 controls implementation
+- Application Security STIG compliance
+- Vulnerability reporting process
+- Security hardening guidelines
+
+## Compliance
+
+This crate is developed with strict adherence to:
+- **NIST 800-53 Rev 5** - Security and Privacy Controls
+- **Application Security STIG** - DoD Security Requirements
+- **RFC 4251-4254** - SSH Protocol Suite
+- **SFTP Protocol Specification** - File Transfer Protocol
 
 ## License
 

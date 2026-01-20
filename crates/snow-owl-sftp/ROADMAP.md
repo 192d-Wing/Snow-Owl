@@ -18,10 +18,15 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - Configuration system
 - Server binary
 - Documentation and tests
+- Development rules and compliance framework
+- NIST 800-53 and STIG documentation
+- Code quality enforcement (clippy, fmt)
+- Security policy and vulnerability reporting
 
 ### 🚧 In Progress
 - Client implementation
 - Production authentication
+- NIST/STIG compliance comments in code
 
 ### 📋 Planned
 - Advanced features
