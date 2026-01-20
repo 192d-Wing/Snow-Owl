@@ -1,5 +1,6 @@
 //! Configuration for SFTP server and client
 
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -61,6 +62,52 @@ pub struct Config {
     /// Maximum connections per user (AC-12: Session Termination)
     #[serde(default = "default_max_connections_per_user")]
     pub max_connections_per_user: usize,
+
+    /// Logging configuration
+    #[serde(default)]
+    pub logging: LoggingConfig,
+}
+
+/// Logging configuration
+///
+/// NIST 800-53: AU-2 (Audit Events), AU-9 (Protection of Audit Information), AU-12 (Audit Generation)
+/// STIG: V-222648 (Audit Records)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LoggingConfig {
+    /// Log level (trace, debug, info, warn, error)
+    pub level: String,
+    /// Log format (text or json)
+    pub format: LogFormat,
+    /// Optional log file path (logs to stderr if not specified)
+    pub file: Option<PathBuf>,
+    /// Enable structured audit logging for SIEM integration
+    /// When enabled, all security-relevant events are logged as structured JSON
+    pub audit_enabled: bool,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            format: LogFormat::Json,
+            file: Some(PathBuf::from("/var/log/snow-owl/sftp-audit.json")),
+            audit_enabled: true,
+        }
+    }
+}
+
+/// Log format options
+///
+/// NIST 800-53: AU-9 (Protection of Audit Information)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// Plain text logging for human readability
+    Text,
+    /// JSON structured logging for SIEM integration
+    /// All log entries are formatted as JSON for easy parsing by log aggregators
+    Json,
 }
 
 impl Default for Config {
@@ -80,6 +127,7 @@ impl Default for Config {
             rate_limit_window_secs: default_rate_limit_window(),
             lockout_duration_secs: default_lockout_duration(),
             max_connections_per_user: default_max_connections_per_user(),
+            logging: LoggingConfig::default(),
         }
     }
 }

@@ -18,19 +18,23 @@
 //! - Directory operations (list, create, remove)
 //! - File attribute management
 
+pub mod audit;
 pub mod auth;
 pub mod config;
 pub mod connection_tracker;
 pub mod error;
+pub mod metrics;
 pub mod protocol;
 pub mod rate_limit;
 pub mod server;
 pub mod client;
 
+pub use audit::{AuditEvent, AuditLogger, SessionInfo};
 pub use auth::AuthorizedKeys;
-pub use config::Config;
+pub use config::{Config, LogFormat, LoggingConfig};
 pub use connection_tracker::{ConnectionTracker, ConnectionTrackerConfig};
 pub use error::{Error, Result};
+pub use metrics::{Metrics, MetricsSnapshot};
 pub use rate_limit::{RateLimitConfig, RateLimiter};
 pub use server::Server;
 pub use client::Client;
