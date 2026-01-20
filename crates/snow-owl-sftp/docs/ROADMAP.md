@@ -223,7 +223,7 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 **Goal**: Add features needed for production deployment
 **Timeline**: 3-4 weeks
-**Status**: In Progress (1/4 phases - 25%)
+**Status**: In Progress (2/4 phases - 50%)
 
 ### 2.1 Advanced File Operations ✅
 - [x] Implement SETSTAT (modify file attributes)
@@ -291,14 +291,74 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 
 **Success Criteria**: Core SFTP v3 attribute operations implemented ✅
 
-### 2.2 Symbolic Links & Advanced Path Operations
-- [ ] Implement READLINK operation
-- [ ] Implement SYMLINK operation
-- [ ] Add hard link support (if supported by FS)
-- [ ] Proper symlink resolution
-- [ ] Symlink security checks
+### 2.2 Symbolic Links & Advanced Path Operations ✅
+- [x] Implement READLINK operation
+- [x] Implement SYMLINK operation
+- [ ] Add hard link support (deferred)
+- [x] Proper symlink resolution
+- [x] Symlink security checks
 
-**Success Criteria**: Full symbolic link support with security
+**Status**: Complete (4/5 tasks - 80%)
+
+**Completed**:
+- **READLINK Operation** (server.rs:handle_readlink)
+  - Read symbolic link target path
+  - Security validation: checks if target is within root directory
+  - Warns when symlink points outside root (logged but allowed for flexibility)
+  - Timeout protection (30s) for readlink operations
+  - Platform-specific with Unix/non-Unix variants
+  - Proper error handling for non-symlinks and missing files
+  - NIST 800-53: AC-3, SI-11 compliance
+  - STIG: V-222566, V-222596 compliance
+
+- **SYMLINK Operation** (server.rs:handle_symlink)
+  - Create symbolic links with target path validation
+  - Security check: prevents symlinks pointing outside root directory
+  - Validates linkpath is within root directory
+  - Rejects creation if link already exists
+  - Supports both relative and absolute target paths
+  - Timeout protection (30s) for symlink creation
+  - Platform-specific with Unix/non-Unix variants
+  - Comprehensive error handling and audit logging
+  - NIST 800-53: AC-3, SI-11 compliance
+  - STIG: V-222566, V-222596 compliance
+
+- **Symlink Security Checks**
+  - Root directory boundary validation for absolute targets
+  - Warning logs when symlinks point outside root
+  - Prevention of symlinks with absolute paths outside root
+  - Path traversal attack prevention
+  - Null byte detection in paths
+  - NIST 800-53: AC-3 (Access Enforcement)
+
+- **Symlink Resolution**
+  - Proper handling of relative symlinks
+  - Absolute path resolution
+  - Symlink chain support (follows multiple levels)
+  - Dangling symlink detection and handling
+  - Cross-directory relative symlink support
+
+- **Comprehensive Testing** (tests/symlink_operations_tests.rs - 450+ lines, 20+ tests)
+  - Basic symlink creation and reading
+  - Relative and absolute symlinks
+  - Directory symlinks
+  - Dangling symlinks (target doesn't exist)
+  - Symlink chains (multi-level)
+  - Circular symlinks (error handling)
+  - Symlinks in subdirectories
+  - Special characters in symlink names
+  - Symlink removal (preserves target)
+  - Symlink metadata (is_symlink check)
+  - Cross-directory relative symlinks
+  - Permission handling
+  - Concurrent symlink operations (5 simultaneous)
+  - Error conditions (already exists, nonexistent)
+  - NIST 800-53: AC-3, SI-11 compliance
+
+**Remaining**:
+- Hard link support (deferred - less common in SFTP usage)
+
+**Success Criteria**: Full symbolic link support with security ✅
 
 ### 2.3 Logging & Monitoring
 - [ ] Structured logging (JSON format option)

@@ -427,6 +427,8 @@ impl Drop for SftpSession {
             MessageType::Rmdir => self.handle_rmdir(&mut buf).await,
             MessageType::Realpath => self.handle_realpath(&mut buf).await,
             MessageType::Rename => self.handle_rename(&mut buf).await,
+            MessageType::Readlink => self.handle_readlink(&mut buf).await,
+            MessageType::Symlink => self.handle_symlink(&mut buf).await,
             _ => {
                 warn!("Unimplemented message type: {:?}", msg_type);
                 Err(Error::NotSupported(format!(
@@ -1187,6 +1189,211 @@ impl Drop for SftpSession {
                 )?)
             }
         }
+    }
+
+    /// Read symbolic link target
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure symlink reading with validation
+    #[cfg(unix)]
+    async fn handle_readlink(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
+        let request_id = self.read_u32(buf)?;
+        let path = codec::get_string(buf)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let resolved_path = match self.resolve_path(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during readlink: {} - {}", path, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
+
+        debug!("Readlink request for: {:?}", resolved_path);
+
+        // NIST 800-53: AC-12 - Timeout protection for readlink operation
+        let readlink_result = timeout(FILE_OP_TIMEOUT, fs::read_link(&resolved_path)).await;
+
+        match readlink_result {
+            Ok(result) => match result {
+                Ok(target) => {
+                    // NIST 800-53: AC-3 - Security check: ensure target is within root
+                    // Convert target to string for response
+                    let target_str = target.to_string_lossy().to_string();
+
+                    // Check if the symlink target tries to escape root directory
+                    let absolute_target = if target.is_absolute() {
+                        target.clone()
+                    } else {
+                        // Resolve relative symlink against the symlink's parent directory
+                        if let Some(parent) = resolved_path.parent() {
+                            parent.join(&target)
+                        } else {
+                            target.clone()
+                        }
+                    };
+
+                    // Security check: warn if symlink points outside root
+                    if !absolute_target.starts_with(&self.config.root_dir) {
+                        warn!(
+                            "Symlink {:?} points outside root directory to {:?}",
+                            resolved_path, absolute_target
+                        );
+                        // We still return the target but log the security concern
+                    }
+
+                    info!("Symlink {:?} -> {:?}", resolved_path, target);
+
+                    let mut response = BytesMut::new();
+                    response.put_u8(MessageType::Name as u8);
+                    response.put_u32(request_id);
+                    response.put_u32(1); // count
+
+                    codec::put_string(&mut response, &target_str);
+                    codec::put_string(&mut response, &target_str); // longname
+                    response.put(FileAttrs::default().encode());
+
+                    Ok(response.to_vec())
+                }
+                Err(e) => {
+                    debug!("Failed to read symlink {:?}: {}", resolved_path, e);
+                    let error = if e.kind() == std::io::ErrorKind::NotFound {
+                        Error::FileNotFound(format!("Symlink not found: {}", path))
+                    } else if e.kind() == std::io::ErrorKind::InvalidInput {
+                        Error::Other(format!("Not a symlink: {}", path))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
+            Err(_) => {
+                error!("Readlink operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Readlink operation timed out"),
+                )?)
+            }
+        }
+    }
+
+    /// Read symbolic link target (non-Unix fallback)
+    #[cfg(not(unix))]
+    async fn handle_readlink(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
+        let request_id = self.read_u32(buf)?;
+        let _path = codec::get_string(buf)?;
+
+        warn!("READLINK not supported on this platform");
+        Ok(self.send_status_error(
+            request_id,
+            &Error::NotSupported("READLINK not supported on this platform".into()),
+        )?)
+    }
+
+    /// Create symbolic link
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure symlink creation with validation
+    #[cfg(unix)]
+    async fn handle_symlink(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
+        let request_id = self.read_u32(buf)?;
+        let linkpath = codec::get_string(buf)?;
+        let targetpath = codec::get_string(buf)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate linkpath (where symlink will be created)
+        let resolved_linkpath = match self.resolve_path(&linkpath) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during symlink (linkpath): {} - {}", linkpath, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
+
+        debug!("Symlink request: {:?} -> {}", resolved_linkpath, targetpath);
+
+        // NIST 800-53: AC-3 - Security validation
+        // Check if symlink already exists
+        if resolved_linkpath.exists() {
+            warn!("Symlink creation failed: path already exists: {:?}", resolved_linkpath);
+            return Ok(self.send_status_error(
+                request_id,
+                &Error::Other(format!("Path already exists: {}", linkpath)),
+            )?);
+        }
+
+        // NIST 800-53: AC-3 - Security check on target
+        // The target doesn't need to exist for symlink creation, but we should validate
+        // that if it's an absolute path, it's within our root directory
+        let target_path = PathBuf::from(&targetpath);
+        if target_path.is_absolute() {
+            // If target is absolute, it should be within root directory
+            if !target_path.starts_with(&self.config.root_dir) {
+                warn!(
+                    "Symlink target points outside root directory: {} -> {}",
+                    linkpath, targetpath
+                );
+                return Ok(self.send_status_error(
+                    request_id,
+                    &Error::PermissionDenied("Symlink target outside root directory".into()),
+                )?);
+            }
+        }
+
+        // NIST 800-53: AC-12 - Timeout protection for symlink creation
+        use tokio::fs::symlink;
+        let symlink_result = timeout(
+            FILE_OP_TIMEOUT,
+            symlink(&targetpath, &resolved_linkpath)
+        ).await;
+
+        match symlink_result {
+            Ok(result) => match result {
+                Ok(_) => {
+                    info!("Created symlink: {:?} -> {}", resolved_linkpath, targetpath);
+                    self.send_status(request_id, StatusCode::Ok, "Success")
+                }
+                Err(e) => {
+                    debug!("Failed to create symlink {:?} -> {}: {}", resolved_linkpath, targetpath, e);
+                    let error = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Cannot create symlink: {}", linkpath))
+                    } else if e.kind() == std::io::ErrorKind::AlreadyExists {
+                        Error::Other(format!("Symlink already exists: {}", linkpath))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
+            Err(_) => {
+                error!("Symlink operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Symlink operation timed out"),
+                )?)
+            }
+        }
+    }
+
+    /// Create symbolic link (non-Unix fallback)
+    #[cfg(not(unix))]
+    async fn handle_symlink(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
+        let request_id = self.read_u32(buf)?;
+        let _linkpath = codec::get_string(buf)?;
+        let _targetpath = codec::get_string(buf)?;
+
+        warn!("SYMLINK not supported on this platform");
+        Ok(self.send_status_error(
+            request_id,
+            &Error::NotSupported("SYMLINK not supported on this platform".into()),
+        )?)
     }
 
     // Helper methods

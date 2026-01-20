@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 2.2: Symbolic Links & Advanced Path Operations (Complete)** - READLINK and SYMLINK
+  - **READLINK Operation** (server.rs:handle_readlink - Unix only)
+    - Read symbolic link target path
+    - Security: validates symlink is within root, warns if target escapes
+    - Timeout protection (30s), path validation
+    - Returns target in NAME response format
+    - Error handling: NotFound, InvalidInput
+    - NIST 800-53: AC-3, SI-11; STIG: V-222566, V-222596
+  - **SYMLINK Operation** (server.rs:handle_symlink - Unix only)
+    - Create symbolic links with security checks
+    - Prevents absolute symlink targets outside root
+    - Validates linkpath within root directory
+    - Rejects if link already exists
+    - Supports relative/absolute targets
+    - Timeout protection (30s), comprehensive logging
+    - NIST 800-53: AC-3, SI-11; STIG: V-222566, V-222596
+  - **Security Features**: Root boundary enforcement, path traversal prevention, null byte detection, security event logging
+  - **Symlink Resolution**: Relative/absolute paths, multi-level chains, dangling symlinks, cross-directory support
+  - **Testing** (tests/symlink_operations_tests.rs - 450+ lines, 20+ tests)
+    - Basic operations, relative/absolute, directories, dangling links
+    - Chains, circular (error), subdirectories, special chars
+    - Removal, metadata, cross-directory, permissions, concurrent (5x)
+    - NIST 800-53: AC-3, SI-11
+  - Phase 2.2: 4/5 tasks (80%); hard links deferred
+
 - **Phase 2.1: Advanced File Operations (Complete)** - SETSTAT and FSETSTAT support
   - **SETSTAT Operation** (server.rs:handle_setstat)
     - Modify file/directory attributes by path
