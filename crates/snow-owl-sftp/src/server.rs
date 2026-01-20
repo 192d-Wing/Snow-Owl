@@ -19,9 +19,16 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
+use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info, warn};
 
 use crate::protocol::{codec, FileAttrs, MessageType, OpenFlags, StatusCode, SFTP_VERSION};
+
+/// File operation timeout (30 seconds)
+///
+/// NIST 800-53: AC-12 (Session Termination)
+/// Implementation: Prevent operations from hanging indefinitely
+const FILE_OP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// SFTP Server
 pub struct Server {
@@ -274,6 +281,11 @@ impl Handler for SftpSessionHandler {
         })
     }
 
+    /// Handle SFTP data
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), SC-8 (Transmission Confidentiality)
+    /// STIG: V-222566
+    /// Implementation: Robust handling of SFTP packets with error recovery
     async fn data(
         &mut self,
         channel: ChannelId,
@@ -281,10 +293,34 @@ impl Handler for SftpSessionHandler {
         session: &mut Session,
     ) -> Result<()> {
         let mut sess = self.session.lock().await;
-        let response = sess.handle_sftp_packet(data).await?;
+
+        // NIST 800-53: SI-11 - Handle packet processing errors gracefully
+        let response = match sess.handle_sftp_packet(data).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log error
+                error!("SFTP packet handling error: {}", e);
+
+                // NIST 800-53: AU-2 - Log security events
+                if e.is_security_event() {
+                    warn!("Security event during SFTP operation: {}", e);
+                }
+
+                // Try to extract request ID for error response
+                // If we can't send an error response, the error will propagate
+                return Err(e);
+            }
+        };
 
         if !response.is_empty() {
-            session.data(channel, CryptoVec::from_slice(&response)).await?;
+            // NIST 800-53: SC-8, SI-11 - Handle channel write errors (connection drops)
+            if let Err(e) = session.data(channel, CryptoVec::from_slice(&response)).await {
+                error!("Failed to send response, channel may be closed: {}", e);
+                return Err(Error::channel_closed(format!(
+                    "Failed to send response: {}",
+                    e
+                )));
+            }
         }
 
         Ok(())
@@ -313,6 +349,10 @@ impl Handler for SftpSessionHandler {
 }
 
 /// SFTP session state
+///
+/// NIST 800-53: SI-11 (Error Handling), AC-12 (Session Termination)
+/// STIG: V-222601
+/// Implementation: Session state with automatic resource cleanup
 struct SftpSession {
     config: Arc<Config>,
     channel: Option<Channel<Msg>>,
@@ -331,10 +371,30 @@ impl SftpSession {
             initialized: false,
         }
     }
+}
+
+impl Drop for SftpSession {
+    /// NIST 800-53: SI-11, AC-12 - Clean up all file handles on session end
+    /// STIG: V-222601
+    /// Implementation: Ensures all file handles are closed when session terminates
+    fn drop(&mut self) {
+        let handle_count = self.handles.len();
+        if handle_count > 0 {
+            info!("Cleaning up {} open file handles on session end", handle_count);
+            self.handles.clear();
+        }
+    }
+}
 
     /// Handle incoming SFTP packet
+    /// Handle incoming SFTP packet
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// STIG: V-222566
+    /// Implementation: Robust error handling for all SFTP operations
     async fn handle_sftp_packet(&mut self, data: &[u8]) -> Result<Vec<u8>> {
         if data.is_empty() {
+            error!("Received empty SFTP packet");
             return Err(Error::Protocol("Empty packet".into()));
         }
 
@@ -343,6 +403,12 @@ impl SftpSession {
         buf = &buf[1..];
 
         debug!("Received SFTP message: {:?}", msg_type);
+
+        // Check if session is initialized (except for INIT message)
+        if !self.initialized && msg_type != MessageType::Init {
+            error!("Received {:?} message before initialization", msg_type);
+            return Err(Error::Protocol("Session not initialized".into()));
+        }
 
         match msg_type {
             MessageType::Init => self.handle_init(&mut buf).await,
@@ -361,8 +427,8 @@ impl SftpSession {
             MessageType::Rename => self.handle_rename(&mut buf).await,
             _ => {
                 warn!("Unimplemented message type: {:?}", msg_type);
-                Err(Error::Protocol(format!(
-                    "Unimplemented message type: {:?}",
+                Err(Error::NotSupported(format!(
+                    "Message type {:?} is not supported",
                     msg_type
                 )))
             }
@@ -386,6 +452,11 @@ impl SftpSession {
         Ok(response.to_vec())
     }
 
+    /// Open file
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure file opening with validation and resource tracking
     async fn handle_open(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let filename = codec::get_string(buf)?;
@@ -393,27 +464,85 @@ impl SftpSession {
         let _attrs = FileAttrs::decode(buf)?;
 
         let flags = OpenFlags(pflags);
-        let path = self.resolve_path(&filename)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let path = match self.resolve_path(&filename) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during open: {} - {}", filename, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Opening file: {:?} with flags: {:?}", path, flags);
 
-        let handle = self.open_file(path, flags).await?;
+        // NIST 800-53: SI-11 - Check for resource exhaustion
+        if self.handles.len() >= 1024 {
+            warn!("Maximum file handles reached (1024)");
+            return Ok(self.send_status_error(
+                request_id,
+                &Error::resource_exhaustion("Too many open file handles"),
+            )?);
+        }
+
+        // NIST 800-53: SI-11 - Handle file opening errors
+        let handle = match self.open_file(path.clone(), flags).await {
+            Ok(h) => h,
+            Err(e) => {
+                debug!("Failed to open file {:?}: {}", path, e);
+                let error = match &e {
+                    Error::Io(io_err) => {
+                        if io_err.kind() == std::io::ErrorKind::NotFound {
+                            Error::FileNotFound(format!("File not found: {}", filename))
+                        } else if io_err.kind() == std::io::ErrorKind::PermissionDenied {
+                            Error::PermissionDenied(format!("Access denied: {}", filename))
+                        } else {
+                            e
+                        }
+                    }
+                    _ => e,
+                };
+                return Ok(self.send_status_error(request_id, &error)?);
+            }
+        };
+
         let handle_id = self.allocate_handle(handle);
 
         self.send_handle(request_id, &handle_id)
     }
 
+    /// Close file or directory handle
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// Implementation: Proper cleanup of file handles with error checking
     async fn handle_close(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let handle = codec::get_bytes(buf)?;
 
         debug!("Closing handle");
 
+        // NIST 800-53: SI-11 - Validate handle exists before closing
+        if !self.handles.contains_key(&handle) {
+            warn!("Attempt to close invalid handle");
+            return Ok(self.send_status_error(
+                request_id,
+                &Error::invalid_handle("Handle does not exist"),
+            )?);
+        }
+
+        // Remove handle (Drop trait will clean up resources)
         self.handles.remove(&handle);
 
         self.send_status(request_id, StatusCode::Ok, "Success")
     }
 
+    /// Read from file handle
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// Implementation: Safe file reading with proper error handling
     async fn handle_read(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let handle = codec::get_bytes(buf)?;
@@ -422,35 +551,58 @@ impl SftpSession {
 
         debug!("Read request: offset={}, len={}", offset, len);
 
-        let file_handle = self
-            .handles
-            .get_mut(&handle)
-            .ok_or_else(|| Error::Protocol("Invalid handle".into()))?;
+        // NIST 800-53: SI-11 - Validate handle
+        let file_handle = self.handles.get_mut(&handle).ok_or_else(|| {
+            warn!("Read attempt with invalid handle");
+            Error::invalid_handle("Handle does not exist or is closed")
+        })?;
 
         match file_handle {
             FileHandle::File(file) => {
-                file.seek(std::io::SeekFrom::Start(offset)).await?;
+                // NIST 800-53: SI-11 - Handle seek errors
+                if let Err(e) = file.seek(std::io::SeekFrom::Start(offset)).await {
+                    error!("Seek error at offset {}: {}", offset, e);
+                    return Ok(self.send_status_error(request_id, &Error::Io(e))?);
+                }
 
                 let mut buffer = vec![0u8; len as usize];
-                match file.read(&mut buffer).await {
-                    Ok(0) => self.send_status(request_id, StatusCode::Eof, "End of file"),
-                    Ok(n) => {
+
+                // NIST 800-53: AC-12 - Timeout protection for read operations
+                let read_result = timeout(FILE_OP_TIMEOUT, file.read(&mut buffer)).await;
+
+                match read_result {
+                    Ok(Ok(0)) => self.send_status(request_id, StatusCode::Eof, "End of file"),
+                    Ok(Ok(n)) => {
                         buffer.truncate(n);
                         self.send_data(request_id, &buffer)
                     }
-                    Err(e) => self.send_status(
-                        request_id,
-                        StatusCode::Failure,
-                        &format!("Read error: {}", e),
-                    ),
+                    Ok(Err(e)) => {
+                        error!("Read error: {}", e);
+                        Ok(self.send_status_error(request_id, &Error::Io(e))?)
+                    }
+                    Err(_) => {
+                        error!("Read operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                        Ok(self.send_status_error(
+                            request_id,
+                            &Error::timeout(format!("Read operation timed out")),
+                        )?)
+                    }
                 }
             }
             FileHandle::Dir(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Cannot read directory")
+                warn!("Attempt to read from directory handle");
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::InvalidHandle("Cannot read from directory handle".into()),
+                )?)
             }
         }
     }
 
+    /// Write to file handle
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// Implementation: Safe file writing with proper error handling
     async fn handle_write(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let handle = codec::get_bytes(buf)?;
@@ -459,47 +611,109 @@ impl SftpSession {
 
         debug!("Write request: offset={}, len={}", offset, data.len());
 
-        let file_handle = self
-            .handles
-            .get_mut(&handle)
-            .ok_or_else(|| Error::Protocol("Invalid handle".into()))?;
+        // NIST 800-53: SI-11 - Validate handle
+        let file_handle = self.handles.get_mut(&handle).ok_or_else(|| {
+            warn!("Write attempt with invalid handle");
+            Error::invalid_handle("Handle does not exist or is closed")
+        })?;
 
         match file_handle {
             FileHandle::File(file) => {
-                file.seek(std::io::SeekFrom::Start(offset)).await?;
-                file.write_all(&data).await?;
-                self.send_status(request_id, StatusCode::Ok, "Success")
+                // NIST 800-53: SI-11 - Handle seek errors
+                if let Err(e) = file.seek(std::io::SeekFrom::Start(offset)).await {
+                    error!("Seek error at offset {}: {}", offset, e);
+                    return Ok(self.send_status_error(request_id, &Error::Io(e))?);
+                }
+
+                // NIST 800-53: AC-12 - Timeout protection for write operations
+                let write_result = timeout(FILE_OP_TIMEOUT, file.write_all(&data)).await;
+
+                match write_result {
+                    Ok(Ok(())) => self.send_status(request_id, StatusCode::Ok, "Success"),
+                    Ok(Err(e)) => {
+                        error!("Write error: {}", e);
+                        Ok(self.send_status_error(request_id, &Error::Io(e))?)
+                    }
+                    Err(_) => {
+                        error!("Write operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                        Ok(self.send_status_error(
+                            request_id,
+                            &Error::timeout(format!("Write operation timed out")),
+                        )?)
+                    }
+                }
             }
             FileHandle::Dir(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Cannot write to directory")
+                warn!("Attempt to write to directory handle");
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::InvalidHandle("Cannot write to directory handle".into()),
+                )?)
             }
         }
     }
 
+    /// Get file/directory attributes
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure attribute retrieval with proper error handling
     async fn handle_stat(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let path = codec::get_string(buf)?;
-        let resolved_path = self.resolve_path(&path)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let resolved_path = match self.resolve_path(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during stat: {} - {}", path, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Stat request for: {:?}", resolved_path);
 
-        match fs::metadata(&resolved_path).await {
-            Ok(metadata) => {
+        // NIST 800-53: AC-12 - Timeout protection for metadata operations
+        let metadata_result = timeout(FILE_OP_TIMEOUT, fs::metadata(&resolved_path)).await;
+
+        match metadata_result {
+            Ok(Ok(metadata)) => {
                 let attrs = metadata_to_attrs(&metadata);
                 self.send_attrs(request_id, attrs)
             }
-            Err(_) => self.send_status(request_id, StatusCode::NoSuchFile, "File not found"),
+            Ok(Err(e)) => {
+                debug!("Stat failed for {:?}: {}", resolved_path, e);
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::FileNotFound(format!("File not found: {}", path)),
+                )?)
+            }
+            Err(_) => {
+                error!("Stat operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Stat operation timed out"),
+                )?)
+            }
         }
     }
 
+    /// Get attributes for file handle
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// Implementation: Safe attribute retrieval with handle validation
     async fn handle_fstat(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let handle = codec::get_bytes(buf)?;
 
-        let file_handle = self
-            .handles
-            .get(&handle)
-            .ok_or_else(|| Error::Protocol("Invalid handle".into()))?;
+        // NIST 800-53: SI-11 - Validate handle
+        let file_handle = self.handles.get(&handle).ok_or_else(|| {
+            warn!("Fstat attempt with invalid handle");
+            Error::invalid_handle("Handle does not exist or is closed")
+        })?;
 
         match file_handle {
             FileHandle::File(file) => match file.metadata().await {
@@ -507,64 +721,110 @@ impl SftpSession {
                     let attrs = metadata_to_attrs(&metadata);
                     self.send_attrs(request_id, attrs)
                 }
-                Err(e) => self.send_status(
-                    request_id,
-                    StatusCode::Failure,
-                    &format!("Metadata error: {}", e),
-                ),
+                Err(e) => {
+                    error!("Metadata error: {}", e);
+                    Ok(self.send_status_error(request_id, &Error::Io(e))?)
+                }
             },
             FileHandle::Dir(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Handle is a directory")
+                warn!("Attempt to fstat directory handle");
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::InvalidHandle("Cannot fstat directory handle".into()),
+                )?)
             }
         }
     }
 
+    /// Open directory for reading
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure directory opening with validation
     async fn handle_opendir(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let path = codec::get_string(buf)?;
-        let resolved_path = self.resolve_path(&path)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let resolved_path = match self.resolve_path(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during opendir: {} - {}", path, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Opening directory: {:?}", resolved_path);
 
-        match fs::read_dir(&resolved_path).await {
-            Ok(read_dir) => {
-                let handle = FileHandle::Dir(DirHandle {
-                    entries: Vec::new(),
-                    index: 0,
-                });
-                let handle_id = self.allocate_handle(handle);
+        // NIST 800-53: AC-12 - Timeout protection for directory operations
+        let read_dir_result = timeout(FILE_OP_TIMEOUT, fs::read_dir(&resolved_path)).await;
 
-                // Read all entries
-                if let Some(FileHandle::Dir(dir_handle)) = self.handles.get_mut(&handle_id) {
-                    let mut entries = Vec::new();
-                    let mut read_dir = read_dir;
+        match read_dir_result {
+            Ok(result) => match result {
+                Ok(read_dir) => {
+                    let handle = FileHandle::Dir(DirHandle {
+                        entries: Vec::new(),
+                        index: 0,
+                    });
+                    let handle_id = self.allocate_handle(handle);
 
-                    while let Ok(Some(entry)) = read_dir.next_entry().await {
-                        if let Ok(metadata) = entry.metadata().await {
-                            entries.push((
-                                entry.file_name().to_string_lossy().to_string(),
-                                metadata_to_attrs(&metadata),
-                            ));
+                    // Read all entries
+                    if let Some(FileHandle::Dir(dir_handle)) = self.handles.get_mut(&handle_id) {
+                        let mut entries = Vec::new();
+                        let mut read_dir = read_dir;
+
+                        while let Ok(Some(entry)) = read_dir.next_entry().await {
+                            if let Ok(metadata) = entry.metadata().await {
+                                entries.push((
+                                    entry.file_name().to_string_lossy().to_string(),
+                                    metadata_to_attrs(&metadata),
+                                ));
+                            }
                         }
+
+                        dir_handle.entries = entries;
                     }
 
-                    dir_handle.entries = entries;
+                    self.send_handle(request_id, &handle_id)
                 }
-
-                self.send_handle(request_id, &handle_id)
+                Err(e) => {
+                    debug!("Failed to open directory {:?}: {}", resolved_path, e);
+                    let error = if e.kind() == std::io::ErrorKind::NotFound {
+                        Error::FileNotFound(format!("Directory not found: {}", path))
+                    } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Access denied: {}", path))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
+            Err(_) => {
+                error!("Opendir operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Directory operation timed out"),
+                )?)
             }
-            Err(_) => self.send_status(request_id, StatusCode::NoSuchFile, "Directory not found"),
         }
     }
 
+    /// Read directory entries
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// Implementation: Safe directory reading with handle validation
     async fn handle_readdir(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let handle = codec::get_bytes(buf)?;
 
-        let file_handle = self
-            .handles
-            .get_mut(&handle)
-            .ok_or_else(|| Error::Protocol("Invalid handle".into()))?;
+        // NIST 800-53: SI-11 - Validate handle
+        let file_handle = self.handles.get_mut(&handle).ok_or_else(|| {
+            warn!("Readdir attempt with invalid handle");
+            Error::invalid_handle("Handle does not exist or is closed")
+        })?;
 
         match file_handle {
             FileHandle::Dir(dir_handle) => {
@@ -593,51 +853,174 @@ impl SftpSession {
                 Ok(response.to_vec())
             }
             FileHandle::File(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Handle is not a directory")
+                warn!("Attempt to readdir from file handle");
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::InvalidHandle("Cannot readdir from file handle".into()),
+                )?)
             }
         }
     }
 
+    /// Remove file
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure file removal with validation and error handling
     async fn handle_remove(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let filename = codec::get_string(buf)?;
-        let path = self.resolve_path(&filename)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let path = match self.resolve_path(&filename) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during remove: {} - {}", filename, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Removing file: {:?}", path);
 
-        match fs::remove_file(&path).await {
-            Ok(_) => self.send_status(request_id, StatusCode::Ok, "Success"),
-            Err(_) => self.send_status(request_id, StatusCode::Failure, "Failed to remove file"),
+        // NIST 800-53: AC-12 - Timeout protection for file removal
+        let remove_result = timeout(FILE_OP_TIMEOUT, fs::remove_file(&path)).await;
+
+        match remove_result {
+            Ok(result) => match result {
+                Ok(_) => {
+                    info!("File removed: {:?}", path);
+                    self.send_status(request_id, StatusCode::Ok, "Success")
+                }
+                Err(e) => {
+                    debug!("Failed to remove file {:?}: {}", path, e);
+                    let error = if e.kind() == std::io::ErrorKind::NotFound {
+                        Error::FileNotFound(format!("File not found: {}", filename))
+                    } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Access denied: {}", filename))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
+            Err(_) => {
+                error!("Remove operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Remove operation timed out"),
+                )?)
+            }
         }
     }
 
+    /// Create directory
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure directory creation with validation and error handling
     async fn handle_mkdir(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let path = codec::get_string(buf)?;
         let _attrs = FileAttrs::decode(buf)?;
-        let resolved_path = self.resolve_path(&path)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let resolved_path = match self.resolve_path(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during mkdir: {} - {}", path, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Creating directory: {:?}", resolved_path);
 
-        match fs::create_dir(&resolved_path).await {
-            Ok(_) => self.send_status(request_id, StatusCode::Ok, "Success"),
+        // NIST 800-53: AC-12 - Timeout protection for directory creation
+        let mkdir_result = timeout(FILE_OP_TIMEOUT, fs::create_dir(&resolved_path)).await;
+
+        match mkdir_result {
+            Ok(result) => match result {
+                Ok(_) => {
+                    info!("Directory created: {:?}", resolved_path);
+                    self.send_status(request_id, StatusCode::Ok, "Success")
+                }
+                Err(e) => {
+                    debug!("Failed to create directory {:?}: {}", resolved_path, e);
+                    let error = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Access denied: {}", path))
+                    } else if e.kind() == std::io::ErrorKind::AlreadyExists {
+                        Error::Other(format!("Directory already exists: {}", path))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
             Err(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Failed to create directory")
+                error!("Mkdir operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Directory creation timed out"),
+                )?)
             }
         }
     }
 
+    /// Remove directory
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure directory removal with validation and error handling
     async fn handle_rmdir(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let path = codec::get_string(buf)?;
-        let resolved_path = self.resolve_path(&path)?;
+
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve path
+        let resolved_path = match self.resolve_path(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during rmdir: {} - {}", path, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Removing directory: {:?}", resolved_path);
 
-        match fs::remove_dir(&resolved_path).await {
-            Ok(_) => self.send_status(request_id, StatusCode::Ok, "Success"),
+        // NIST 800-53: AC-12 - Timeout protection for directory removal
+        let rmdir_result = timeout(FILE_OP_TIMEOUT, fs::remove_dir(&resolved_path)).await;
+
+        match rmdir_result {
+            Ok(result) => match result {
+                Ok(_) => {
+                    info!("Directory removed: {:?}", resolved_path);
+                    self.send_status(request_id, StatusCode::Ok, "Success")
+                }
+                Err(e) => {
+                    debug!("Failed to remove directory {:?}: {}", resolved_path, e);
+                    let error = if e.kind() == std::io::ErrorKind::NotFound {
+                        Error::FileNotFound(format!("Directory not found: {}", path))
+                    } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Access denied: {}", path))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
             Err(_) => {
-                self.send_status(request_id, StatusCode::Failure, "Failed to remove directory")
+                error!("Rmdir operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Directory removal timed out"),
+                )?)
             }
         }
     }
@@ -666,25 +1049,93 @@ impl SftpSession {
         Ok(response.to_vec())
     }
 
+    /// Rename file or directory
+    ///
+    /// NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement)
+    /// STIG: V-222566, V-222596
+    /// Implementation: Secure rename with validation and error handling
     async fn handle_rename(&mut self, buf: &mut &[u8]) -> Result<Vec<u8>> {
         let request_id = self.read_u32(buf)?;
         let oldpath = codec::get_string(buf)?;
         let newpath = codec::get_string(buf)?;
 
-        let old_resolved = self.resolve_path(&oldpath)?;
-        let new_resolved = self.resolve_path(&newpath)?;
+        // NIST 800-53: AC-3, SI-10 - Validate and resolve both paths
+        let old_resolved = match self.resolve_path(&oldpath) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during rename (old path): {} - {}", oldpath, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
+
+        let new_resolved = match self.resolve_path(&newpath) {
+            Ok(p) => p,
+            Err(e) => {
+                // NIST 800-53: AU-2 - Log security event
+                if e.is_security_event() {
+                    warn!("Security event during rename (new path): {} - {}", newpath, e);
+                }
+                return Ok(self.send_status_error(request_id, &e)?);
+            }
+        };
 
         debug!("Rename: {:?} -> {:?}", old_resolved, new_resolved);
 
-        match fs::rename(&old_resolved, &new_resolved).await {
-            Ok(_) => self.send_status(request_id, StatusCode::Ok, "Success"),
-            Err(_) => self.send_status(request_id, StatusCode::Failure, "Failed to rename"),
+        // NIST 800-53: AC-12 - Timeout protection for rename operations
+        let rename_result = timeout(FILE_OP_TIMEOUT, fs::rename(&old_resolved, &new_resolved)).await;
+
+        match rename_result {
+            Ok(result) => match result {
+                Ok(_) => {
+                    info!("Renamed {:?} to {:?}", old_resolved, new_resolved);
+                    self.send_status(request_id, StatusCode::Ok, "Success")
+                }
+                Err(e) => {
+                    debug!("Failed to rename {:?} to {:?}: {}", old_resolved, new_resolved, e);
+                    let error = if e.kind() == std::io::ErrorKind::NotFound {
+                        Error::FileNotFound(format!("Source not found: {}", oldpath))
+                    } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        Error::PermissionDenied(format!("Access denied"))
+                    } else {
+                        Error::Io(e)
+                    };
+                    Ok(self.send_status_error(request_id, &error)?)
+                }
+            },
+            Err(_) => {
+                error!("Rename operation timed out after {} seconds", FILE_OP_TIMEOUT.as_secs());
+                Ok(self.send_status_error(
+                    request_id,
+                    &Error::timeout("Rename operation timed out"),
+                )?)
+            }
         }
     }
 
     // Helper methods
 
+    /// Resolve and validate path
+    ///
+    /// NIST 800-53: SI-10 (Input Validation), AC-3 (Access Enforcement)
+    /// STIG: V-222396, V-222596
+    /// Implementation: Prevents path traversal attacks and validates input
     fn resolve_path(&self, path: &str) -> Result<PathBuf> {
+        // NIST 800-53: SI-10 - Validate input
+        if path.is_empty() {
+            return Err(Error::InvalidPath("Empty path".to_string()));
+        }
+
+        // NIST 800-53: SI-10 - Check for null bytes (security)
+        if path.contains('\0') {
+            warn!("Path contains null bytes: {:?}", path);
+            return Err(Error::InvalidPath(
+                "Path contains invalid characters".to_string(),
+            ));
+        }
+
         let path = if path.starts_with('/') {
             &path[1..]
         } else {
@@ -693,11 +1144,11 @@ impl SftpSession {
 
         let resolved = self.config.root_dir.join(path);
 
-        // Ensure the path is within root_dir (prevent path traversal)
+        // NIST 800-53: AC-3 - Ensure the path is within root_dir (prevent path traversal)
+        // STIG: V-222396, V-222596
         if !resolved.starts_with(&self.config.root_dir) {
-            return Err(Error::PermissionDenied(
-                "Path traversal attempt".to_string(),
-            ));
+            warn!("Path traversal attempt detected: {}", path);
+            return Err(Error::InvalidPath("Invalid path".to_string()));
         }
 
         Ok(resolved)
@@ -738,12 +1189,32 @@ impl SftpSession {
         handle_id
     }
 
+    /// Send STATUS response with explicit code and message
     fn send_status(&self, request_id: u32, code: StatusCode, msg: &str) -> Result<Vec<u8>> {
         let mut response = BytesMut::new();
         response.put_u8(MessageType::Status as u8);
         response.put_u32(request_id);
         response.put_u32(code.into());
         codec::put_string(&mut response, msg);
+        codec::put_string(&mut response, "en"); // language tag
+
+        Ok(response.to_vec())
+    }
+
+    /// Send STATUS response from Error
+    ///
+    /// NIST 800-53: SI-11 (Error Handling)
+    /// STIG: V-222566
+    /// Implementation: Uses sanitized error messages and proper status codes
+    fn send_status_error(&self, request_id: u32, error: &Error) -> Result<Vec<u8>> {
+        let code = error.to_status_code();
+        let msg = error.sanitized_message();
+
+        let mut response = BytesMut::new();
+        response.put_u8(MessageType::Status as u8);
+        response.put_u32(request_id);
+        response.put_u32(code);
+        codec::put_string(&mut response, &msg);
         codec::put_string(&mut response, "en"); // language tag
 
         Ok(response.to_vec())
@@ -797,9 +1268,27 @@ impl SftpSession {
     }
 }
 
+/// File handle types
+///
+/// NIST 800-53: SI-11 (Error Handling)
+/// Implementation: Proper resource cleanup via Drop trait
 enum FileHandle {
     File(fs::File),
     Dir(DirHandle),
+}
+
+impl Drop for FileHandle {
+    /// NIST 800-53: SI-11 - Ensure resources are cleaned up
+    fn drop(&mut self) {
+        match self {
+            FileHandle::File(_) => {
+                debug!("Closing file handle");
+            }
+            FileHandle::Dir(_) => {
+                debug!("Closing directory handle");
+            }
+        }
+    }
 }
 
 struct DirHandle {

@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Enhanced Error Handling & Reliability (Phase 1.3)** - Production-grade error handling
+  - Enhanced error module with comprehensive error types (Timeout, InvalidHandle, ResourceExhaustion, NotSupported, ChannelClosed)
+  - Error categorization helpers (is_recoverable, is_client_error, is_security_event)
+  - SFTP status code mapping (to_status_code) for RFC-compliant error responses
+  - Sanitized error messages (sanitized_message) to prevent information disclosure
+  - Error constructor helpers for common scenarios
+  - Comprehensive unit tests for all error functionality
+  - Robust error handling across all SFTP operations (open, read, write, stat, opendir, etc.)
+  - Channel closed detection with graceful connection drop handling
+  - Automatic file handle cleanup via Drop trait implementation
+  - Session cleanup on unexpected termination (closes all open handles)
+  - Timeout protection (30 seconds) for all file operations (read, write, stat, opendir, remove, mkdir, rmdir, rename)
+  - Enhanced input validation with null byte detection
+  - Path traversal protection with security event logging
+  - Resource exhaustion detection (max 1024 file handles per session)
+  - Detailed contextual error messages with appropriate log levels
+  - Security event logging for authentication failures, permission denials, and path traversal attempts
+  - Session initialization checks to prevent operations before handshake
+  - NIST 800-53: SI-11 (Error Handling), AC-3 (Access Enforcement), AC-12 (Session Termination), SC-8 (Transmission Confidentiality), SI-10 (Input Validation)
+  - STIG: V-222566 (Error messages), V-222596 (Access control), V-222601 (Session termination), V-222396 (Input validation)
 - **Complete SFTP Client Implementation (src/client.rs)** - Full-featured RFC-compliant SFTP client
   - SSH connection establishment with public key authentication
   - SFTP protocol initialization and version negotiation
