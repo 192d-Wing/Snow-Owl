@@ -7,13 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Reorganized documentation into docs/ folder for better structure
+- Updated all documentation references to use docs/ paths
+
 ### Added
-- Development rules enforcement (DEVELOPMENT_RULES.md)
+- Development rules enforcement (docs/DEVELOPMENT_RULES.md)
 - NIST 800-53 and STIG compliance framework
-- Security policy documentation (SECURITY.md)
+- Security policy documentation (docs/SECURITY.md)
 - Pre-commit verification script (verify.sh)
 - Cargo linting rules (clippy strict mode)
-- Changelog tracking
+- Changelog tracking (docs/CHANGELOG.md)
+- Pull request template (.github/PULL_REQUEST_TEMPLATE.md)
 
 ### Security
 - Documented NIST 800-53 control requirements
@@ -22,9 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added vulnerability reporting process
 
 ### Documentation
-- Created comprehensive development rules
+- Created comprehensive development rules (6000+ words)
 - Added security compliance documentation
 - Enhanced README with security warnings
+- Added quick reference card for developers
+- Added rules summary for easy onboarding
+- Organized all documentation in docs/ folder
 
 ## [0.1.0] - 2026-01-19
 
