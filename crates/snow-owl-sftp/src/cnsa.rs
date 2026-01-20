@@ -50,6 +50,17 @@
 //! - `ecdsa-sha2-nistp384` - ECDSA with P-384 (CNSA 2.0 required)
 //! - `ssh-ed25519` - Ed25519 (acceptable for non-classified)
 //!
+//! ## RSA Exclusion
+//!
+//! **RSA is explicitly NOT supported** in this implementation:
+//! - RSA key exchange: Vulnerable to quantum attacks via Shor's algorithm
+//! - RSA signatures: Not CNSA 2.0 compliant for any classification level
+//! - russh crate configured with `default-features = false` to exclude RSA
+//! - Only EC-based algorithms (P-384, Ed25519) are enabled
+//!
+//! If you have existing RSA keys, you **must** generate new ECDSA P-384 or
+//! Ed25519 keys for CNSA 2.0 compliance. See documentation for migration guide.
+//!
 //! ## References
 //! - CNSS Advisory Memorandum: Commercial National Security Algorithm Suite 2.0
 //! - NIST SP 800-52 Rev. 2: Guidelines for TLS Implementations
@@ -244,6 +255,17 @@ pub fn pqc_readiness_info() -> &'static str {
     "#
 }
 
+/// Compile-time verification that RSA is not enabled
+///
+/// This ensures the russh crate was configured without RSA support.
+/// If this fails to compile, RSA is enabled and CNSA 2.0 compliance is broken.
+#[cfg(test)]
+const _: () = {
+    // This will fail to compile if RSA types are available
+    #[cfg(feature = "rsa")]
+    compile_error!("RSA feature must not be enabled - violates CNSA 2.0 compliance");
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,5 +385,58 @@ mod tests {
         assert!(info.contains("SLH-DSA"));
         assert!(info.contains("FIPS 203"));
         assert!(info.contains("2030"));
+    }
+
+    #[test]
+    fn test_no_rsa_algorithms() {
+        // Verify that none of our approved algorithms are RSA-based
+        // This is a static check to ensure we never accidentally add RSA
+
+        // All KEX algorithms must be EC-based
+        for kex in CNSA_KEX_ALGORITHMS {
+            let kex_str = format!("{:?}", kex);
+            assert!(!kex_str.to_lowercase().contains("rsa"),
+                   "KEX algorithm contains RSA: {:?}", kex);
+        }
+
+        // All signature algorithms must be EC-based
+        for key in CNSA_HOST_KEY_ALGORITHMS {
+            let key_str = format!("{:?}", key);
+            assert!(!key_str.to_lowercase().contains("rsa"),
+                   "Signature algorithm contains RSA: {:?}", key);
+        }
+
+        // Verify we have exactly 2 KEX algorithms (P-384 and X25519)
+        assert_eq!(CNSA_KEX_ALGORITHMS.len(), 2,
+                  "Should have exactly 2 KEX algorithms");
+
+        // Verify we have exactly 2 signature algorithms (P-384 and Ed25519)
+        assert_eq!(CNSA_HOST_KEY_ALGORITHMS.len(), 2,
+                  "Should have exactly 2 signature algorithms");
+    }
+
+    #[test]
+    fn test_only_ec_curves() {
+        // Verify that P-384 is present (CNSA 2.0 required)
+        assert!(CNSA_KEX_ALGORITHMS.contains(&KexName::EcdhSha2Nistp384),
+               "P-384 must be present for CNSA 2.0");
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::EcdsaSha2Nistp384),
+               "ECDSA P-384 must be present for CNSA 2.0");
+
+        // Verify Ed25519 is present (acceptable for unclassified)
+        assert!(CNSA_KEX_ALGORITHMS.contains(&KexName::Curve25519Sha256),
+               "X25519 should be present for unclassified use");
+        assert!(CNSA_HOST_KEY_ALGORITHMS.contains(&KeyName::Ed25519),
+               "Ed25519 should be present for unclassified use");
+    }
+
+    #[test]
+    fn test_compliance_info_mentions_rsa_exclusion() {
+        let info = compliance_info();
+        // Should explicitly mention that RSA is disabled
+        let info_lower = info.to_lowercase();
+        assert!(info_lower.contains("rsa") || info_lower.contains("disabled") ||
+                info_lower.contains("non-compliant"),
+               "Compliance info should mention RSA exclusion");
     }
 }

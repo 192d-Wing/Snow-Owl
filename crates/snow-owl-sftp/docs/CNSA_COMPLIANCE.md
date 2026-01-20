@@ -121,6 +121,116 @@ Only elliptic curve signature algorithms are enabled:
 
 **Disabled**: All RSA, DSA, and ECDSA algorithms with curves other than P-384 (P-256, P-521).
 
+## RSA Exclusion - Critical Security Requirement
+
+### Why RSA is Prohibited
+
+RSA is **explicitly excluded** from this implementation for multiple security reasons:
+
+1. **Quantum Vulnerability**: RSA is vulnerable to Shor's algorithm on quantum computers. Once large-scale quantum computers exist (~2030s), all RSA-encrypted data can be retroactively decrypted.
+
+2. **CNSA 2.0 Non-Compliance**: RSA is not approved under CNSA 2.0 for any classification level:
+   - **UNCLASSIFIED**: EC algorithms preferred
+   - **SECRET**: P-384 required (RSA prohibited)
+   - **TOP SECRET**: P-384 current, PQC future (RSA prohibited)
+
+3. **Key Size Requirements**: To achieve equivalent security to P-384 (192-bit), RSA would require 7680-bit keys, making it impractical.
+
+4. **Forward Security**: EC algorithms provide better forward secrecy properties with smaller key sizes.
+
+### Implementation Details
+
+The russh dependency is configured to **exclude RSA entirely**:
+
+```toml
+# Cargo.toml
+russh = { version = "0.56", default-features = false, features = ["flate2", "aws-lc-rs"] }
+```
+
+By setting `default-features = false`, we disable the `rsa` feature that would otherwise be included. This ensures:
+- No RSA key generation capability
+- No RSA signature verification
+- No RSA key exchange algorithms
+- Compile-time guarantee of RSA exclusion
+
+### Migration from RSA Keys
+
+If your organization currently uses RSA keys, you **must** migrate to EC keys:
+
+#### Step 1: Generate New EC Host Keys
+
+```bash
+# For SECRET and TOP SECRET (CNSA 2.0 required)
+ssh-keygen -t ecdsa -b 384 -f /etc/ssh/ssh_host_ecdsa384_key -N ""
+
+# For UNCLASSIFIED (modern alternative)
+ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N ""
+```
+
+#### Step 2: Generate New EC Client Keys
+
+```bash
+# For SECRET and TOP SECRET
+ssh-keygen -t ecdsa -b 384 -f ~/.ssh/id_ecdsa384 -C "user@host"
+
+# For UNCLASSIFIED
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -C "user@host"
+```
+
+#### Step 3: Update Authorized Keys
+
+```bash
+# Copy new public key to server
+cat ~/.ssh/id_ecdsa384.pub >> ~/.ssh/authorized_keys
+
+# Remove old RSA keys from authorized_keys
+# Edit ~/.ssh/authorized_keys and delete lines starting with "ssh-rsa"
+```
+
+#### Step 4: Update Server Configuration
+
+```toml
+# /etc/snow-owl/sftp.toml
+host_key_path = "/etc/ssh/ssh_host_ecdsa384_key"
+```
+
+#### Step 5: Verify No RSA Keys Are Used
+
+```bash
+# Check that server doesn't have RSA keys
+ls -l /etc/ssh/ssh_host_*_key | grep -v ecdsa | grep -v ed25519
+
+# Check authorized_keys for RSA entries (should return nothing)
+grep "ssh-rsa" ~/.ssh/authorized_keys
+```
+
+### Security Impact
+
+**Breaking Change Warning**: Clients with only RSA keys will be **rejected**:
+
+```
+Permission denied (publickey).
+```
+
+This is **intentional** and **required** for CNSA 2.0 compliance. Organizations must:
+1. Generate new EC keys before deploying this server
+2. Update all client systems with EC keys
+3. Remove all RSA keys from production systems
+4. Audit and verify no RSA usage remains
+
+### Testing EC Key Connectivity
+
+Test your new EC keys before deploying to production:
+
+```bash
+# Test with specific key type
+ssh -i ~/.ssh/id_ecdsa384 -o HostKeyAlgorithms=ecdsa-sha2-nistp384 user@server
+
+# Verify algorithm negotiation
+ssh -vv user@server 2>&1 | grep "Server host key"
+# Should show: "Server host key: ecdsa-sha2-nistp384"
+```
+
 ## Implementation
 
 ### Server Configuration
