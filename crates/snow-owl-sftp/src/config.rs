@@ -2,7 +2,9 @@
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::net::IpAddr;
 
 /// SFTP server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +68,26 @@ pub struct Config {
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
+
+    /// Per-user configurations (NIST 800-53: AC-3, AC-6)
+    #[serde(default)]
+    pub users: HashMap<String, UserConfig>,
+
+    /// Global bandwidth limit in bytes per second (0 = unlimited)
+    #[serde(default)]
+    pub global_bandwidth_limit: u64,
+
+    /// IP whitelist - if not empty, only these IPs are allowed
+    #[serde(default)]
+    pub ip_whitelist: Vec<IpAddr>,
+
+    /// IP blacklist - these IPs are always denied
+    #[serde(default)]
+    pub ip_blacklist: Vec<IpAddr>,
+
+    /// Configuration file path for hot reload
+    #[serde(skip)]
+    pub config_file_path: Option<PathBuf>,
 }
 
 /// Logging configuration
@@ -110,6 +132,88 @@ pub enum LogFormat {
     Json,
 }
 
+/// Per-user configuration
+///
+/// NIST 800-53: AC-3 (Access Enforcement), AC-6 (Least Privilege)
+/// STIG: V-222567 (User Access Control)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UserConfig {
+    /// User's home directory (chroot jail)
+    /// If set, user is restricted to this directory and subdirectories
+    pub home_dir: Option<PathBuf>,
+
+    /// User-specific bandwidth limit in bytes per second (0 = use global limit)
+    pub bandwidth_limit: u64,
+
+    /// Disk quota in bytes (0 = unlimited)
+    pub disk_quota: u64,
+
+    /// Maximum file size in bytes (0 = unlimited)
+    pub max_file_size: u64,
+
+    /// Maximum number of concurrent connections for this user
+    pub max_connections: Option<usize>,
+
+    /// Time-based access restrictions
+    pub access_schedule: Option<AccessSchedule>,
+
+    /// Read-only mode (user can only download, not upload or modify)
+    pub read_only: bool,
+
+    /// Allowed operations - if specified, only these operations are permitted
+    pub allowed_operations: Option<Vec<String>>,
+
+    /// Denied operations - these operations are explicitly forbidden
+    pub denied_operations: Vec<String>,
+}
+
+impl Default for UserConfig {
+    fn default() -> Self {
+        Self {
+            home_dir: None,
+            bandwidth_limit: 0,
+            disk_quota: 0,
+            max_file_size: 0,
+            max_connections: None,
+            access_schedule: None,
+            read_only: false,
+            allowed_operations: None,
+            denied_operations: Vec::new(),
+        }
+    }
+}
+
+/// Access schedule configuration for time-based restrictions
+///
+/// NIST 800-53: AC-2 (Account Management)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessSchedule {
+    /// Days of week when access is allowed (0 = Sunday, 6 = Saturday)
+    /// Empty vec = all days allowed
+    pub allowed_days: Vec<u8>,
+
+    /// Start hour (0-23) when access is allowed
+    pub start_hour: u8,
+
+    /// End hour (0-23) when access is allowed
+    pub end_hour: u8,
+
+    /// Timezone for schedule (e.g., "America/New_York", "UTC")
+    pub timezone: String,
+}
+
+impl Default for AccessSchedule {
+    fn default() -> Self {
+        Self {
+            allowed_days: vec![1, 2, 3, 4, 5], // Monday-Friday
+            start_hour: 9,
+            end_hour: 17,
+            timezone: "UTC".to_string(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -128,6 +232,11 @@ impl Default for Config {
             lockout_duration_secs: default_lockout_duration(),
             max_connections_per_user: default_max_connections_per_user(),
             logging: LoggingConfig::default(),
+            users: HashMap::new(),
+            global_bandwidth_limit: 0,
+            ip_whitelist: Vec::new(),
+            ip_blacklist: Vec::new(),
+            config_file_path: None,
         }
     }
 }
@@ -138,8 +247,34 @@ impl Config {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::Error::Config(format!("Failed to read config file: {}", e)))?;
 
-        toml::from_str(&content)
-            .map_err(|e| crate::Error::Config(format!("Failed to parse config: {}", e)))
+        let mut config: Self = toml::from_str(&content)
+            .map_err(|e| crate::Error::Config(format!("Failed to parse config: {}", e)))?;
+
+        // Store config file path for hot reload
+        config.config_file_path = Some(PathBuf::from(path));
+
+        Ok(config)
+    }
+
+    /// Reload configuration from the original file
+    ///
+    /// NIST 800-53: CM-3 (Configuration Change Control)
+    pub fn reload(&mut self) -> crate::Result<()> {
+        if let Some(ref path) = self.config_file_path {
+            let new_config = Self::from_file(
+                path.to_str()
+                    .ok_or_else(|| crate::Error::Config("Invalid config path".to_string()))?
+            )?;
+
+            // Preserve connection-specific state but update configuration
+            *self = new_config;
+
+            Ok(())
+        } else {
+            Err(crate::Error::Config(
+                "No config file path available for reload".to_string()
+            ))
+        }
     }
 
     /// Validate configuration
@@ -164,7 +299,118 @@ impl Config {
             ));
         }
 
+        // Validate per-user configurations
+        for (username, user_config) in &self.users {
+            if let Some(ref home_dir) = user_config.home_dir {
+                if !home_dir.exists() {
+                    return Err(crate::Error::Config(format!(
+                        "User '{}' home directory does not exist: {:?}",
+                        username, home_dir
+                    )));
+                }
+                if !home_dir.is_dir() {
+                    return Err(crate::Error::Config(format!(
+                        "User '{}' home path is not a directory: {:?}",
+                        username, home_dir
+                    )));
+                }
+            }
+
+            if let Some(ref schedule) = user_config.access_schedule {
+                if schedule.start_hour > 23 || schedule.end_hour > 23 {
+                    return Err(crate::Error::Config(format!(
+                        "User '{}' has invalid access schedule hours (must be 0-23)",
+                        username
+                    )));
+                }
+                for &day in &schedule.allowed_days {
+                    if day > 6 {
+                        return Err(crate::Error::Config(format!(
+                            "User '{}' has invalid day in access schedule (must be 0-6)",
+                            username
+                        )));
+                    }
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    /// Get user-specific configuration
+    pub fn get_user_config(&self, username: &str) -> Option<&UserConfig> {
+        self.users.get(username)
+    }
+
+    /// Check if an IP address is allowed to connect
+    ///
+    /// NIST 800-53: AC-3 (Access Enforcement)
+    /// STIG: V-222567 (Access Control)
+    pub fn is_ip_allowed(&self, ip: &IpAddr) -> bool {
+        // First check blacklist - always deny
+        if self.ip_blacklist.contains(ip) {
+            return false;
+        }
+
+        // If whitelist is empty, allow all (except blacklisted)
+        if self.ip_whitelist.is_empty() {
+            return true;
+        }
+
+        // Otherwise, must be in whitelist
+        self.ip_whitelist.contains(ip)
+    }
+
+    /// Check if a user can access at the current time
+    ///
+    /// NIST 800-53: AC-2 (Account Management)
+    pub fn is_access_time_allowed(&self, username: &str) -> bool {
+        if let Some(user_config) = self.get_user_config(username) {
+            if let Some(ref schedule) = user_config.access_schedule {
+                use chrono::{Datelike, Timelike, Utc};
+
+                let now = Utc::now();
+                let day_of_week = now.weekday().num_days_from_sunday() as u8;
+                let hour = now.hour() as u8;
+
+                // Check day of week
+                if !schedule.allowed_days.is_empty() && !schedule.allowed_days.contains(&day_of_week) {
+                    return false;
+                }
+
+                // Check hour range
+                if hour < schedule.start_hour || hour >= schedule.end_hour {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Check if a user can perform a specific operation
+    ///
+    /// NIST 800-53: AC-3 (Access Enforcement)
+    pub fn is_operation_allowed(&self, username: &str, operation: &str) -> bool {
+        if let Some(user_config) = self.get_user_config(username) {
+            // Check denied operations first
+            if user_config.denied_operations.contains(&operation.to_string()) {
+                return false;
+            }
+
+            // If allowed_operations is set, operation must be in the list
+            if let Some(ref allowed) = user_config.allowed_operations {
+                return allowed.contains(&operation.to_string());
+            }
+
+            // Check read-only mode
+            if user_config.read_only {
+                let read_only_ops = vec!["read", "stat", "lstat", "opendir", "readdir", "readlink"];
+                return read_only_ops.contains(&operation);
+            }
+        }
+
+        true
     }
 }
 

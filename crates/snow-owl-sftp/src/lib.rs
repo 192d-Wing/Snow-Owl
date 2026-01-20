@@ -31,7 +31,7 @@ pub mod client;
 
 pub use audit::{AuditEvent, AuditLogger, SessionInfo};
 pub use auth::AuthorizedKeys;
-pub use config::{Config, LogFormat, LoggingConfig};
+pub use config::{AccessSchedule, Config, LogFormat, LoggingConfig, UserConfig};
 pub use connection_tracker::{ConnectionTracker, ConnectionTrackerConfig};
 pub use error::{Error, Result};
 pub use metrics::{Metrics, MetricsSnapshot};

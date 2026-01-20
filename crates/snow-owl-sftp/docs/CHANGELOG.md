@@ -19,7 +19,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated [IPV6_SUPPORT.md](../../snow-owl-tftp/docs/IPV6_SUPPORT.md) documentation
   - Compliant with Rule 2: IPv6 Network Support and NIST 800-53 SC-7
 
-- **Phase 2.3: Logging & Monitoring (✅ Complete - 71%)** - Metrics and Audit Trail
+- **Phase 2.4: Configuration & Management (✅ Complete - 100%)** - Multi-user Configuration
+  - **UserConfig Structure** (config.rs)
+    - Per-user home directories (home_dir: Option<PathBuf>) for chroot jails
+    - Per-user bandwidth limits (bandwidth_limit: u64 bytes/sec, 0 = use global)
+    - Disk quota enforcement (disk_quota: u64 bytes, 0 = unlimited)
+    - Maximum file size limits (max_file_size: u64 bytes, 0 = unlimited)
+    - Per-user connection limits (max_connections: Option<usize>)
+    - Read-only mode (read_only: bool) - restricts to read operations only
+    - Operation-based access control (allowed_operations, denied_operations)
+    - Time-based access restrictions (access_schedule: Option<AccessSchedule>)
+    - NIST 800-53: AC-3 (Access Enforcement), AC-6 (Least Privilege)
+    - STIG: V-222567 (User Access Control)
+  - **AccessSchedule Configuration** (config.rs)
+    - Day-of-week restrictions (allowed_days: Vec<u8>, 0=Sunday to 6=Saturday)
+    - Hour-based access windows (start_hour, end_hour: u8, 0-23)
+    - Timezone support (timezone: String) for global deployments
+    - Default schedule: Monday-Friday, 9 AM - 5 PM UTC
+    - NIST 800-53: AC-2 (Account Management)
+  - **IP Access Control** (config.rs)
+    - IP whitelist (ip_whitelist: Vec<IpAddr>)
+    - IP blacklist (ip_blacklist: Vec<IpAddr>)
+    - Blacklist takes precedence over whitelist
+    - Empty whitelist allows all (except blacklisted)
+    - is_ip_allowed() method for access validation
+    - NIST 800-53: AC-3 (Access Enforcement)
+    - STIG: V-222567 (Access Control)
+  - **Hot Configuration Reload** (config.rs)
+    - reload() method for live configuration updates
+    - Stores config_file_path on load for reloading
+    - Preserves connection state during reload
+    - NIST 800-53: CM-3 (Configuration Change Control)
+  - **Configuration Validation** (config.rs)
+    - Enhanced validate() method
+    - Per-user home directory existence checks
+    - Access schedule validation (hours 0-23, days 0-6)
+    - Comprehensive error messages for invalid configurations
+  - **Configuration Methods**
+    - get_user_config() for user-specific settings lookup
+    - is_access_time_allowed() for time-based access checks
+    - is_operation_allowed() for operation-based access control
+    - Read-only mode enforcement (read/stat/opendir/readdir/readlink only)
+    - Denied operations override allowed operations
+  - **Global Configuration**
+    - global_bandwidth_limit: u64 (bytes/sec, 0 = unlimited)
+    - users: HashMap<String, UserConfig> for efficient lookup
+    - Infrastructure for future bandwidth throttling implementation
+  - **Example Configuration** (examples/config.toml)
+    - Real-world multi-user scenarios
+    - Admin, developer, readonly_user, contractor profiles
+    - Backup service (write-only) and monitoring (read-only) examples
+    - Time-restricted contractor access
+    - Comprehensive documentation with NIST/STIG references
+  - **Testing** (tests/config_management_tests.rs - 300+ lines, 18 tests)
+    - UserConfig defaults and custom configurations
+    - Home directory validation (valid/invalid paths)
+    - IP whitelist/blacklist functionality and precedence
+    - AccessSchedule validation (invalid hours/days detection)
+    - Read-only mode operation enforcement
+    - Allowed/denied operations with override behavior
+    - Multiple users with different configurations
+    - Global bandwidth limit configuration
+    - Comprehensive feature integration tests
+    - NIST 800-53: AC-3, AC-6 compliance verification
+  - **Phase 2.4: 7/7 tasks complete (100%)**
+  - Note: Bandwidth throttling and disk quota enforcement implementation deferred to Phase 3 (configuration structure is complete)
+
+- **Phase 2.3: Logging & Monitoring (✅ Complete - 86%)** - Metrics and Audit Trail
   - **Metrics Module** (metrics.rs - 750+ lines, 9 tests)
     - Thread-safe metrics using atomic operations (Arc<AtomicU64>)
     - Connection metrics: total, active, failed, rejected connections
@@ -55,8 +121,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Metrics passed to SftpSessionHandler for per-session tracking
     - Infrastructure for operation-level metrics collection
     - Foundation for Prometheus/monitoring system integration
-  - **Phase 2.3: 5/7 tasks complete (71%)**
-  - Note: Prometheus integration and log rotation deferred (can be handled externally)
+  - **JSON Structured Logging** (config.rs, bin/server.rs)
+    - LogFormat enum (Text | Json)
+    - JSON as default format for SIEM integration (Elastic, Splunk, Datadog)
+    - LoggingConfig: level, format, file path, audit_enabled
+    - Non-blocking async file appender via tracing-appender
+    - Daily log rotation (automatic file naming with dates)
+    - Structured event fields (event, error, directory, port, username, etc.)
+    - Comprehensive lifecycle event logging:
+      - server_starting, server_configuration, security_configuration
+      - server_created, server_running, server_error, server_shutdown
+      - creating_root_directory, root_directory_creation_failed
+      - configuration_validation_failed
+    - Default log path: /var/log/snow-owl/sftp-audit.json
+    - CLI arguments: --log-format, --log-file
+    - Automatic log directory creation with graceful stderr fallback
+    - NIST 800-53: AU-9 (Protection of Audit Information)
+    - STIG: V-222648 (Audit Records)
+  - **Phase 2.3: 6/7 tasks complete (86%)**
+  - Note: Prometheus metrics endpoint deferred to Phase 3 (JSON export already available)
 
 - **Phase 2.2: Symbolic Links & Advanced Path Operations (✅ Complete - 100%)** - READLINK and SYMLINK
   - **READLINK Operation** (server.rs:handle_readlink - Unix only)

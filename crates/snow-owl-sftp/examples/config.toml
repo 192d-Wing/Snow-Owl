@@ -1,0 +1,109 @@
+# Snow Owl SFTP Server Configuration Example
+# NIST 800-53 Compliant Configuration
+
+# Server Settings
+bind_address = "0.0.0.0"
+port = 2222
+root_dir = "/var/sftp"
+host_key_path = "/etc/ssh/ssh_host_rsa_key"
+authorized_keys_path = "~/.ssh/authorized_keys"
+
+# Connection Limits
+max_connections = 100
+max_connections_per_user = 10
+timeout = 300
+
+# Protocol Settings (RFC 4254)
+max_packet_size = 32768  # Minimum per RFC 4254
+window_size = 2097152    # 2MB
+
+# Security Settings (NIST 800-53: AC-7)
+max_auth_attempts = 5
+rate_limit_window_secs = 300  # 5 minutes
+lockout_duration_secs = 900   # 15 minutes
+
+# Global Bandwidth Limit (bytes per second, 0 = unlimited)
+global_bandwidth_limit = 0
+
+# IP Access Control (NIST 800-53: AC-3)
+# If whitelist is empty, all IPs are allowed (except blacklisted)
+ip_whitelist = ["192.168.1.0", "10.0.0.0"]
+ip_blacklist = ["192.168.1.100"]
+
+# Logging Configuration (NIST 800-53: AU-2, AU-9, AU-12)
+[logging]
+level = "info"
+format = "json"  # "json" or "text" - JSON is recommended for SIEM integration
+file = "/var/log/snow-owl/sftp-audit.json"
+audit_enabled = true
+
+# Per-User Configuration Examples
+# NIST 800-53: AC-3 (Access Enforcement), AC-6 (Least Privilege)
+
+[users.admin]
+home_dir = "/var/sftp/admin"
+bandwidth_limit = 10485760  # 10 MB/s
+disk_quota = 107374182400   # 100 GB
+max_file_size = 1073741824  # 1 GB
+max_connections = 5
+read_only = false
+# No operation restrictions - admin has full access
+
+[users.developer]
+home_dir = "/var/sftp/developer"
+bandwidth_limit = 5242880   # 5 MB/s
+disk_quota = 53687091200    # 50 GB
+max_file_size = 524288000   # 500 MB
+max_connections = 3
+read_only = false
+allowed_operations = ["read", "write", "stat", "lstat", "opendir", "readdir", "mkdir", "rmdir", "remove", "rename"]
+# Can't create symlinks or use extended operations
+
+[users.developer.access_schedule]
+allowed_days = [1, 2, 3, 4, 5]  # Monday through Friday (0 = Sunday, 6 = Saturday)
+start_hour = 9                   # 9 AM
+end_hour = 17                    # 5 PM
+timezone = "UTC"
+
+[users.readonly_user]
+home_dir = "/var/sftp/readonly"
+bandwidth_limit = 1048576  # 1 MB/s
+disk_quota = 0             # No quota (read-only)
+max_file_size = 0          # No limit (can't write anyway)
+max_connections = 2
+read_only = true
+# Read-only mode: only read, stat, lstat, opendir, readdir, readlink operations allowed
+
+[users.contractor]
+home_dir = "/var/sftp/contractor"
+bandwidth_limit = 2097152      # 2 MB/s
+disk_quota = 10737418240       # 10 GB
+max_file_size = 104857600      # 100 MB
+max_connections = 2
+read_only = false
+denied_operations = ["remove", "rmdir"]  # Can upload but not delete
+# Time-restricted access
+
+[users.contractor.access_schedule]
+allowed_days = [1, 2, 3]  # Monday, Tuesday, Wednesday
+start_hour = 10            # 10 AM
+end_hour = 16              # 4 PM
+timezone = "America/New_York"
+
+[users.backup_service]
+home_dir = "/var/sftp/backups"
+bandwidth_limit = 0            # Unlimited
+disk_quota = 1099511627776     # 1 TB
+max_file_size = 10737418240    # 10 GB
+max_connections = 1
+read_only = false
+allowed_operations = ["write", "stat", "mkdir"]  # Can only write and create directories
+# Backup service can write but not read back (write-only backup)
+
+[users.monitoring]
+home_dir = "/var/sftp/logs"
+bandwidth_limit = 524288  # 512 KB/s
+disk_quota = 0            # No quota (read-only)
+max_connections = 10      # Multiple monitoring tools
+read_only = true
+# Monitoring user can only read log files - no time restrictions (24/7 access)
