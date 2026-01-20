@@ -4,24 +4,24 @@ RFC-compliant SFTP (SSH File Transfer Protocol) server and client implementation
 
 > ⚠️ **DEVELOPMENT VERSION - NOT PRODUCTION READY**
 >
-> Version 0.1.0 is for development and testing only. See [SECURITY.md](SECURITY.md) for current limitations.
+> Version 0.1.0 is for development and testing only. See [docs/SECURITY.md](docs/SECURITY.md) for current limitations.
 
 ## 📚 Documentation
 
 ### User Documentation
-- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Get started in 5 minutes
 - **[README.md](README.md)** - This file: Overview and features
 
 ### Developer Documentation
-- **[RULES_SUMMARY.md](RULES_SUMMARY.md)** - ⭐ START HERE: 3 mandatory rules
-- **[DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md)** - Complete development rules (detailed)
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - One-page developer cheat sheet
-- **[ROADMAP.md](ROADMAP.md)** - Development roadmap and future plans
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
+- **[docs/RULES_SUMMARY.md](docs/RULES_SUMMARY.md)** - ⭐ START HERE: 3 mandatory rules
+- **[docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md)** - Complete development rules (detailed)
+- **[docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)** - One-page developer cheat sheet
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and future plans
+- **[docs/CHANGELOG.md](docs/CHANGELOG.md)** - Version history and changes
 
 ### Compliance Documentation
-- **[RFC_COMPLIANCE.md](RFC_COMPLIANCE.md)** - Detailed RFC 4251-4254 compliance
-- **[SECURITY.md](SECURITY.md)** - Security policy, NIST 800-53, STIG compliance
+- **[docs/RFC_COMPLIANCE.md](docs/RFC_COMPLIANCE.md)** - Detailed RFC 4251-4254 compliance
+- **[docs/SECURITY.md](docs/SECURITY.md)** - Security policy, NIST 800-53, STIG compliance
 
 ### Configuration
 - **[config.example.toml](config.example.toml)** - Example server configuration
@@ -239,8 +239,8 @@ sftp -P 2222 user@localhost
 Contributions are welcome! This crate aims to be a fully RFC-compliant SFTP implementation.
 
 **Before contributing, please read:**
-- [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) - Mandatory development rules
-- [SECURITY.md](SECURITY.md) - Security requirements and compliance
+- [docs/DEVELOPMENT_RULES.md](docs/DEVELOPMENT_RULES.md) - Mandatory development rules
+- [docs/SECURITY.md](docs/SECURITY.md) - Security requirements and compliance
 
 All code must:
 - Include NIST 800-53 and STIG compliance comments
@@ -251,7 +251,7 @@ Run `./verify.sh` before committing to ensure compliance.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for:
+See [docs/SECURITY.md](docs/SECURITY.md) for:
 - NIST 800-53 controls implementation
 - Application Security STIG compliance
 - Vulnerability reporting process

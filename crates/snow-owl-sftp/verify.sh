@@ -125,6 +125,6 @@ else
     echo "========================================"
     echo ""
     echo "Please fix the issues above before committing."
-    echo "See DEVELOPMENT_RULES.md for requirements."
+    echo "See docs/DEVELOPMENT_RULES.md for requirements."
     exit 1
 fi

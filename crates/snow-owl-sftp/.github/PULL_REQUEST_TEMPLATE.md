@@ -25,8 +25,8 @@
 - [ ] `./verify.sh` passes without errors
 - [ ] NIST 800-53 controls documented for security-relevant code
 - [ ] Application Security STIG findings addressed
-- [ ] CHANGELOG.md updated with changes
-- [ ] Relevant documentation updated (README, RFC_COMPLIANCE, etc.)
+- [ ] docs/CHANGELOG.md updated with changes
+- [ ] Relevant documentation updated (README, docs/RFC_COMPLIANCE.md, etc.)
 
 ### NIST 800-53 Controls
 
@@ -64,11 +64,11 @@
 **Check all that apply:**
 
 - [ ] README.md
-- [ ] RFC_COMPLIANCE.md
-- [ ] ROADMAP.md
-- [ ] QUICKSTART.md
-- [ ] SECURITY.md
-- [ ] CHANGELOG.md
+- [ ] docs/RFC_COMPLIANCE.md
+- [ ] docs/ROADMAP.md
+- [ ] docs/QUICKSTART.md
+- [ ] docs/SECURITY.md
+- [ ] docs/CHANGELOG.md
 - [ ] Code documentation (rustdoc)
 - [ ] config.example.toml
 - [ ] No documentation updates needed
@@ -107,7 +107,7 @@
 
 **Does this PR introduce breaking changes?**
 
-- [ ] Yes (describe below and update CHANGELOG)
+- [ ] Yes (describe below and update docs/CHANGELOG.md)
 - [ ] No
 
 **If yes, describe:**
@@ -141,7 +141,7 @@
 
 **Reviewers should verify:**
 
-- [ ] Code follows DEVELOPMENT_RULES.md
+- [ ] Code follows docs/DEVELOPMENT_RULES.md
 - [ ] NIST/STIG comments present on security code
 - [ ] All documentation is updated and accurate
 - [ ] No clippy warnings
@@ -154,7 +154,7 @@
 
 **By submitting this PR, I confirm that:**
 
-- I have read and followed DEVELOPMENT_RULES.md
+- I have read and followed docs/DEVELOPMENT_RULES.md
 - All code includes required NIST 800-53 and STIG compliance comments
 - All code passes `cargo fmt` and `cargo clippy` with zero warnings
 - All relevant documentation has been updated
