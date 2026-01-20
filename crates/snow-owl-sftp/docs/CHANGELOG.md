@@ -8,6 +8,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 2.3: Logging & Monitoring (✅ Complete - 71%)** - Metrics and Audit Trail
+  - **Metrics Module** (metrics.rs - 750+ lines, 9 tests)
+    - Thread-safe metrics using atomic operations (Arc<AtomicU64>)
+    - Connection metrics: total, active, failed, rejected connections
+    - Authentication metrics: attempts, successes, failures, rate-limited
+    - File operation metrics: opens, reads, writes, closes, removes, renames
+    - Directory operation metrics: opens, reads, creates, removes
+    - Advanced operation metrics: stat, setstat, symlink, readlink
+    - Data transfer metrics: bytes_read, bytes_written with totals
+    - Error metrics: protocol, permission, not_found, io, timeout errors
+    - Performance metrics: total_operations, operations_per_second
+    - MetricsSnapshot with calculated fields (auth_success_rate, uptime)
+    - JSON export methods: to_json() compact and to_json_pretty()
+    - OperationTimer for latency tracking (elapsed_ms, elapsed_micros)
+    - Human-readable summary() formatter
+    - NIST 800-53: AU-2, AU-12, SI-4 (System Monitoring)
+    - STIG: V-222566, V-222648 (Audit Records)
+  - **Audit Trail Module** (audit.rs - 450+ lines, 3 tests)
+    - Structured AuditEvent enum with 8 event types
+    - ConnectionEstablished, ConnectionClosed (with duration)
+    - AuthAttempt (success/failure with reason)
+    - FileOperation (read/write/delete/rename with bytes, errors)
+    - DirectoryOperation (create/remove/list)
+    - SecurityEvent (path traversal, rate limits, violations)
+    - RateLimitTriggered, ConnectionLimitReached
+    - SessionInfo tracker: session_id, IP, username, timestamps, duration
+    - AuditLogger helper functions for common operations
+    - JSON serialization for structured logging
+    - Integration with tracing crate for log output
+    - NIST 800-53: AU-2, AU-3, AU-12 (Audit Generation)
+    - STIG: V-222648, V-222566
+  - **Server Integration**
+    - Added Metrics to SftpHandler with global metrics instance
+    - Metrics passed to SftpSessionHandler for per-session tracking
+    - Infrastructure for operation-level metrics collection
+    - Foundation for Prometheus/monitoring system integration
+  - **Phase 2.3: 5/7 tasks complete (71%)**
+  - Note: Prometheus integration and log rotation deferred (can be handled externally)
+
 - **Phase 2.2: Symbolic Links & Advanced Path Operations (✅ Complete - 100%)** - READLINK and SYMLINK
   - **READLINK Operation** (server.rs:handle_readlink - Unix only)
     - Read symbolic link target path
