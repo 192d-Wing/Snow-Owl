@@ -124,15 +124,65 @@ A clear, actionable roadmap for building a production-ready, RFC-compliant SFTP 
 - Recovery from partial transfers (deferred to Phase 2)
 
 ### 1.4 Testing
-- [ ] Unit tests for all protocol encoding/decoding
+- [x] Unit tests for all protocol encoding/decoding
 - [ ] Integration tests for file operations
 - [ ] Integration tests for directory operations
-- [ ] Error condition tests
+- [x] Error condition tests
 - [ ] Concurrent operation tests
-- [ ] Authentication tests
+- [x] Authentication tests
 - [ ] End-to-end tests with standard SFTP clients
 
 **Success Criteria**: >80% test coverage, all tests passing
+
+**Progress**: 3/7 tasks complete (43%)
+
+**Completed**:
+- **Protocol Encoding Tests** (protocol_encoding_tests.rs - 350+ lines)
+  - All MessageType conversions (18 message types)
+  - All StatusCode mappings (9 status codes)
+  - OpenFlags combinations and operations
+  - FileAttrs encoding/decoding with all field combinations
+  - String codec with various lengths and UTF-8 validation
+  - Bytes codec with edge cases
+  - Invalid data handling and error cases
+  - Maximum value handling
+  - Permission encoding round-trips
+  - NIST 800-53: SI-11, SI-10 compliance
+  - STIG: V-222566, V-222396 compliance
+
+- **Error Handling Tests** (error_handling_tests.rs - 280+ lines)
+  - Error categorization (is_recoverable, is_client_error, is_security_event)
+  - SFTP status code mapping for all error types
+  - Sanitized error messages (information disclosure prevention)
+  - Error constructor helpers
+  - Error display and conversion
+  - Retry logic classification
+  - Security event audit classification
+  - Comprehensive error type coverage (15 error types)
+  - NIST 800-53: SI-11, AU-2 compliance
+  - STIG: V-222566 compliance
+
+- **Authentication Tests** (authentication_tests.rs - 270+ lines)
+  - AuthorizedKeys file parsing and validation
+  - RateLimiter functionality and IP isolation
+  - Rate limit enforcement and reset on success
+  - IPv6 address support in rate limiting
+  - ConnectionTracker limits and enforcement
+  - Connection cleanup and per-user isolation
+  - Connection statistics tracking
+  - NIST 800-53: IA-2, AC-7, AC-10, AC-12 compliance
+  - STIG: V-222611, V-222578, V-222601 compliance
+
+**Test Statistics**:
+- Total test files: 4 (integration_test.rs + 3 new)
+- Total test lines: 1,033 lines
+- Test cases: 60+ individual tests
+- Coverage areas: Protocol, Errors, Authentication, Security
+
+**Remaining**:
+- Integration tests for file/directory operations
+- Concurrent operation tests
+- End-to-end tests with real SFTP clients
 
 ---
 

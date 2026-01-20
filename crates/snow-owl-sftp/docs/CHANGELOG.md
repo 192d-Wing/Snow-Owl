@@ -8,6 +8,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Comprehensive Testing Suite (Phase 1.4 - Partial)** - Production-ready test coverage
+  - **Protocol Encoding Tests** (tests/protocol_encoding_tests.rs - 350+ lines)
+    - All MessageType conversions (18 message types including Init, Open, Read, Write, Status, etc.)
+    - All StatusCode mappings (9 codes: Ok, Eof, NoSuchFile, PermissionDenied, etc.)
+    - OpenFlags combinations and bitwise operations (READ, WRITE, APPEND, CREAT, TRUNC, EXCL)
+    - FileAttrs encoding/decoding with complete, partial, and empty field sets
+    - String codec tests with various lengths (0 to 1000+ chars) and UTF-8 validation
+    - Bytes codec tests with edge cases (empty, single byte, 256-byte sequences)
+    - Invalid data handling (insufficient data, invalid UTF-8)
+    - Maximum value testing (u32::MAX, u64::MAX, octal permissions)
+    - NIST 800-53: SI-11, SI-10
+    - STIG: V-222566, V-222396
+  - **Error Handling Tests** (tests/error_handling_tests.rs - 280+ lines)
+    - Error categorization (is_recoverable, is_client_error, is_security_event)
+    - SFTP status code mapping for all 15 error types
+    - Sanitized error messages preventing information disclosure (auth, permission, config)
+    - Error constructor helpers (timeout, channel_closed, invalid_handle, resource_exhaustion)
+    - IO error conversion and display formatting
+    - Retry logic classification for client resilience
+    - Security event audit classification for compliance
+    - Comprehensive coverage of all error types
+    - NIST 800-53: SI-11, AU-2
+    - STIG: V-222566
+  - **Authentication & Security Tests** (tests/authentication_tests.rs - 270+ lines)
+    - AuthorizedKeys file parsing (comments, empty files, nonexistent paths)
+    - RateLimiter enforcement with configurable attempts/windows
+    - Per-IP rate limiting with IPv4 and IPv6 support
+    - Rate limit reset on successful authentication
+    - ConnectionTracker per-user limits and isolation
+    - Connection registration, cleanup, and statistics
+    - Concurrent session control and enforcement
+    - NIST 800-53: IA-2, AC-7, AC-10, AC-12
+    - STIG: V-222611, V-222578, V-222601
+  - **Test Statistics**:
+    - 4 test files (integration_test.rs + 3 new comprehensive suites)
+    - 1,033 total lines of test code
+    - 60+ individual test cases
+    - Coverage: Protocol encoding/decoding, Error handling, Authentication, Security
+  - Phase 1.4: 3/7 tasks complete (43%)
 - **Enhanced Error Handling & Reliability (Phase 1.3)** - Production-grade error handling
   - Enhanced error module with comprehensive error types (Timeout, InvalidHandle, ResourceExhaustion, NotSupported, ChannelClosed)
   - Error categorization helpers (is_recoverable, is_client_error, is_security_event)
