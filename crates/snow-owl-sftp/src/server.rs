@@ -386,7 +386,7 @@ impl Drop for SftpSession {
     }
 }
 
-    /// Handle incoming SFTP packet
+impl SftpSession {
     /// Handle incoming SFTP packet
     ///
     /// NIST 800-53: SI-11 (Error Handling)
