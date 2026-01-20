@@ -4,8 +4,8 @@
 //! built on top of the SSH protocol (RFC 4251-4254).
 
 use crate::{
-    AuthorizedKeys, Config, ConnectionTracker, ConnectionTrackerConfig, Error, RateLimitConfig,
-    RateLimiter, Result,
+    cnsa, AuthorizedKeys, Config, ConnectionTracker, ConnectionTrackerConfig, Error,
+    RateLimitConfig, RateLimiter, Result,
 };
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
@@ -37,20 +37,43 @@ pub struct Server {
 }
 
 impl Server {
-    /// Create a new SFTP server
+    /// Create a new SFTP server with NSA CNSA 2.0 compliant cryptography
+    ///
+    /// CNSS Advisory: Commercial National Security Algorithm Suite 2.0
+    /// Implementation: Enforces CNSA 2.0 cipher suite for SECRET and below
     pub async fn new(config: Config) -> Result<Self> {
         config.validate()?;
 
         // Load host key
         let key_pair = load_host_key(&config.host_key_path).await?;
 
-        let ssh_config = russh::server::Config {
+        // NSA CNSA 2.0: Configure cryptographic algorithms
+        // Only CNSA 2.0 compliant algorithms are enabled
+        let mut ssh_config = russh::server::Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(config.timeout)),
             auth_rejection_time: std::time::Duration::from_secs(3),
             auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
             keys: vec![key_pair],
             ..Default::default()
         };
+
+        // CNSA 2.0: Configure only approved algorithms
+        ssh_config.preferred = russh::Preferred {
+            kex: cnsa::CNSA_KEX_ALGORITHMS,
+            key: cnsa::CNSA_HOST_KEY_ALGORITHMS,
+            cipher: cnsa::CNSA_CIPHERS,
+            mac: cnsa::CNSA_MAC_ALGORITHMS,
+            ..Default::default()
+        };
+
+        info!(
+            event = "cnsa_compliance",
+            kex_algorithms = ?cnsa::CNSA_KEX_ALGORITHMS,
+            ciphers = ?cnsa::CNSA_CIPHERS,
+            mac_algorithms = ?cnsa::CNSA_MAC_ALGORITHMS,
+            host_key_algorithms = ?cnsa::CNSA_HOST_KEY_ALGORITHMS,
+            "NSA CNSA 2.0 cipher suite enforced"
+        );
 
         Ok(Self {
             config: Arc::new(config),

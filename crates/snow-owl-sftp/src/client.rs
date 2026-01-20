@@ -4,7 +4,7 @@
 //! STIG: V-222577 (Cryptographic mechanisms), V-222611 (Certificate validation)
 //! Implementation: RFC-compliant SFTP client with SSH authentication
 
-use crate::{Error, Result};
+use crate::{cnsa, Error, Result};
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use russh::client::{self, Handle, Handler, Msg};
@@ -67,8 +67,24 @@ impl Client {
         // NIST 800-53: SC-13 (Cryptographic Protection) - Load private key
         let key_pair = load_private_key(key_path).await?;
 
+        // NSA CNSA 2.0: Configure only approved cryptographic algorithms
+        let mut config = russh::client::Config::default();
+        config.preferred = russh::Preferred {
+            kex: cnsa::CNSA_KEX_ALGORITHMS,
+            key: cnsa::CNSA_PUBLIC_KEY_ALGORITHMS,
+            cipher: cnsa::CNSA_CIPHERS,
+            mac: cnsa::CNSA_MAC_ALGORITHMS,
+            ..Default::default()
+        };
+
+        info!(
+            event = "cnsa_client_config",
+            kex = ?cnsa::CNSA_KEX_ALGORITHMS,
+            ciphers = ?cnsa::CNSA_CIPHERS,
+            "CNSA 2.0 compliant client configured"
+        );
+
         // NIST 800-53: SC-8 (Transmission Confidentiality) - Establish SSH connection
-        let config = russh::client::Config::default();
         let sh = ClientHandler::new();
 
         let mut session = russh::client::connect(

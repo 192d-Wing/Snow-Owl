@@ -20,6 +20,7 @@
 
 pub mod audit;
 pub mod auth;
+pub mod cnsa;
 pub mod config;
 pub mod connection_tracker;
 pub mod error;
